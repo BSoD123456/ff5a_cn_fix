@@ -210,19 +210,19 @@ class c_ff5a_sect_tab(c_ff5a_sect):
             npos = self.pos_last
         return dpos, npos - dpos
 
-class c_ff5a_sect_text(c_ff5a_sect_tab):
-
-    def _parse_head(self):
-        self.pos_last = self.U32(0xc)
-        self._parse_index(0x10)
-
-    def get_text_raw(self, idx, detail = False):
+    def get_raw(self, idx, detail = False):
         dpos, dlen = self.get_item(idx)
         rtxt = self.BYTES(dpos, dlen)
         if detail:
             return rtxt, dpos, dlen
         else:
             return rtxt
+
+class c_ff5a_sect_text(c_ff5a_sect_tab):
+
+    def _parse_head(self):
+        self.pos_last = self.U32(0xc)
+        self._parse_index(0x10)
 
 class c_ff5a_sect_font(c_ff5a_sect_tab):
 
@@ -282,9 +282,11 @@ if __name__ == '__main__':
     psr.load_rom()
     txtjp = psr.rom.tabs['text'][0]
     txtcn = psr.rom.tabs['text'][1]
+    fntjp = psr.rom.tabs['font'][0]
+    fntcn = psr.rom.tabs['font'][4]
     def _show_long_txt(txt, th = 8):
         for i in range(txt.cnt_index):
-            s, p, l = txt.get_text_raw(i, True)
+            s, p, l = txt.get_raw(i, True)
             if l > th:
                 print(f'{i}:+0x{p:x}(0x{l:x})')
                 hexdump(s)
@@ -294,8 +296,8 @@ if __name__ == '__main__':
         tcnt = min(txtjp.cnt_index, txtcn.cnt_index)
         print(f'jp:{txtjp.cnt_index}, cn:{txtcn.cnt_index}')
         for i in range(tcnt):
-            s1, p1, l1 = txtjp.get_text_raw(i, True)
-            s2, p2, l2 = txtcn.get_text_raw(i, True)
+            s1, p1, l1 = txtjp.get_raw(i, True)
+            s2, p2, l2 = txtcn.get_raw(i, True)
             if l1 == l2 > th:
                 print(f'jp {i}:+0x{p1:x}(0x{l1:x})')
                 hexdump(s1)
@@ -303,4 +305,44 @@ if __name__ == '__main__':
                 hexdump(s2)
                 yield
     clt = _cmp_long_txt(0x20)
+    def _cmp_font(n):
+        if fntjp.font_size != fntcn.font_size:
+            return
+        fcnt = min(fntjp.cnt_index, fntcn.cnt_index)
+        print(f'jp:0x{fntjp.cnt_index:x}, cn:0x{fntcn.cnt_index:x}')
+        rs = []
+        rc = 0
+        for i in range(fcnt):
+            f1, p1, l1 = fntjp.get_raw(i, True)
+            f2, p2, l2 = fntcn.get_raw(i, True)
+            if l1 != l2:
+                print(f'unmatch size {i:04x}:{l1}/{l2}')
+                continue
+            for j in range(l1):
+                if f1[j] != f2[j]:
+                    break
+            else:
+                if rc < th:
+                    rs.append(i)
+                    rc += 1
+                else:
+                    r = ' '.join(f'{c:04x}' for c in rs)
+                    print(f'same: {r}')
+                    rs = []
+                    rc = 0
+                    yield
+        if rc:
+            r = ' '.join(f'{c:04x}' for c in rs)
+            print(f'same: {r}')
+        yield
+    cf = _cmp_font(8)
+    #next(cf)
     next(clt)
+    def _count_font(txt):
+        fntset = set()
+        for i in range(txt.cnt_index):
+            s, p, l = txt.get_raw(i, True)
+            for i in range(0, l-1, 2):
+                c = s[i] + (s[i+1] << 8)
+                fntset.add(c)
+        return fntset
