@@ -267,6 +267,7 @@ class c_ff5a_sect_font(c_ff5a_sect_tab):
         sz_font = font_width * font_width * 2 // 8 + font_pad
         self.pos_last = self._get_pos(cnt_tab - 1) + sz_font
         self.font_width = font_width
+        self.font_height = font_width
         self.font_pad = font_pad
         self.font_size = sz_font
         report('info', f'found 0x{self.cnt_index:x} chars')
@@ -307,6 +308,165 @@ class c_ff5a_parser:
         with open(self.rom_path, 'rb') as fd:
             raw = fd.read()
         self.rom = c_ff5a_sect_rom(raw, 0)
+
+class c_text_drawer:
+
+    def __init__(self, font_tab):
+        self.font = font_tab
+
+    _pil_img = None
+    @property
+    def pil_img(self):
+        if self._pil_img:
+            return self._pil_img
+        try:
+            from PIL import Image
+        except:
+            print('''
+please install Pillow with
+pip3 install pillow
+or
+pip install pillow
+or
+py -3 -m pip install pillow
+or
+python -m pip install pillow''')
+            raise
+        c_text_drawer._pil_img = Image
+        return Image
+
+    PAL = [
+        (255, 255, 255), (230, 230, 230), (200, 200, 200), (0, 0, 0),
+        (240, 0, 240), (240, 240, 0), (0, 240, 240),
+        (0, 240, 0), (0, 0, 240), (240, 0, 0),
+        (120, 0, 120), (120, 120, 0), (0, 120, 120),
+        (0, 120, 0), (0, 0, 120), (120, 0, 0),
+    ]
+
+    def draw_block(self, text, cols, pad_col = 3, pad_row = 5):
+        tlen = len(text)
+        pal = self.PAL
+        font = self.font
+        fw = font.font_width
+        fh = font.font_height
+        fp = font.font_pad
+        assert fw % 2 == 0
+        for i in range(0, tlen, cols):
+            ed_row = min(i + cols, tlen)
+            rlen = ed_row - i
+            row = text[i: ed_row]
+            for y in range(fh):
+                rline = []
+                for ch_ridx in range(cols):
+                    if ch_ridx < rlen:
+                        ch = row[ch_ridx]
+                        ch_pos, ch_sz = font.get_item(ch)
+                        ch_pos += fp
+                        for x in range(0, fw, 2):
+                            p_pos = ch_pos + (y * fw + x) // 2
+                            px = font.U8(p_pos)
+                            print(f'char ({x},{y}) 0x{p_pos:x}: 0x{px:x}')
+                            rline.append(pal[px & 0xf])
+                            rline.append(pal[px >> 4])
+                    else:
+                        print(f'pad_right, {ch_ridx}/{rlen}')
+                        for x in range(fw):
+                            rline.append(pal[0])
+                    if ch_ridx < cols - 1:
+                        print(f'padding {pad_col}')
+                        for x in range(pad_col):
+                            rline.append(pal[0])
+                yield rline, True
+            if i + cols < tlen:
+                for y in range(pad_row):
+                    rline = []
+                    for x in range((fw + pad_col) * cols - pad_col):
+                        rline.append(pal[0])
+                    yield rline, True
+        while True:
+            rline = []
+            for x in range((fw + pad_col) * cols - pad_col):
+                rline.append(pal[0])
+            yield rline, False
+
+    @staticmethod
+    def draw_horiz(*blks, pad = 5):
+        pal = c_text_drawer.PAL
+        rwidth = 0
+        while True:
+            unfinished = False
+            rline = []
+            blen = len(blks)
+            for i in range(blen):
+                blk = blks[i]
+                rl, uf = next(blk)
+                if uf:
+                    unfinished = True
+                rline.extend(rl)
+                if i < blen -1:
+                    for x in range(pad):
+                        rline.append(pal[0])
+            if not rwidth:
+                rwidth = len(rline)
+            if unfinished:
+                yield rline, True
+            else:
+                break
+        while True:
+            rline = []
+            for x in range(rwidth):
+                rline.append(pal[0])
+            yield rline, False
+
+    @staticmethod
+    def draw_vert(*blks, pad = 10):
+        pal = c_text_drawer.PAL
+        blk_info = []
+        for blk in blks:
+            rl, uf = next(blk)
+            if uf:
+                blk_info.append((blk, rl, len(rl)))
+        rwidth = max(len(p[2]) for p in blk_info)
+        blen = len(blk_info)
+        for i in range(blen):
+            blk, rl, rlen = blk_info[i]
+            rl_pad = []
+            for x in range(rwidth - rlen):
+                rl_pad.append(pal[0])
+                rl.append(pal[0])
+            yield rl, True
+            for rl, uf in blk:
+                if not uf:
+                    break
+                if rl_pad:
+                    rl.extend(rl_pad)
+                yield rl, True
+            if i < blen - 1:
+                for y in range(pad):
+                    rline = []
+                    for x in range(rwidth):
+                        rline.append(pal[0])
+                    yield rline, True
+        while True:
+            rline = []
+            for x in range(rwidth):
+                rline.append(pal[0])
+            yield rline, False
+
+    def make_img(self, blk):
+        dat = []
+        bh = 0
+        bw = 0
+        for rl, uf in blk:
+            if not uf:
+                break
+            if not bw:
+                bw = len(rl)
+            dat.extend(rl)
+            bh += 1
+        im = self.pil_img.new('RGB', (bw, bh))
+        im.putdata(dat)
+        return im
 
 if __name__ == '__main__':
     from hexdump import hexdump
@@ -379,3 +539,7 @@ if __name__ == '__main__':
                 c = s[i] + (s[i+1] << 8)
                 fntset.add(c)
         return fntset
+    dtjp = c_text_drawer(fntjp)
+    dtcn = c_text_drawer(fntcn)
+    #im = dtjp.make_img(dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 5))
+    im = dtjp.make_img(dtjp.draw_block([10], 1))
