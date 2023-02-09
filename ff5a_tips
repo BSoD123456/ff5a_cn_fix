@@ -1,0 +1,44 @@
+no$gba dev 2.6A can break vram
+but, 3.02 can not.
+
+80c2d04 bl 8102410 ; decompress char tile to [r2](2013c0c) from [r1](826b47c)
+80c2d32 bl 810241c ; copy char tile(as img) to vram(6010c00) from [r0](2013c14)
+
+83f9f62=me-font
+801cefe bl 8102410 ; flat font from rom to bit-font wram
+  80d46d0 bl 8102410(r4:801ce9d) ; flat font, search font tab, char index r3
+    looped_
+    80d379a ldrh r2, [r0+4] ; load char index from a tab(~= 20143e8+)
+    80d37b0 bl 8102410(r4:80d4699) ; char index r2
+    looped^
+      80d1b5e bl 8102410(r4:80d3659) ;
+        804bf56 bl 8102410(r4:80d1aad) ;
+      
+20143e8 tab change on 80d2812
+  looped_
+  80d28c6 bl 8102408(r2:80d24c9) ; get char index !! func_80d24c8: read text get char index !!
+  ->80d24d8 ldrb r3,[r2] ; load a byte from rom TEXT, 83baab6 here the first text.
+  80d28dc bl 80d32a4 ; as jump, no ret in recur
+  80d32c0 bl 8102410(r4:80d2725) ; fill a line, looped
+  80d330e bl 80d28c0 ; recur(loop)
+  looped^
+    80d3a60 bl 8102410(r4:80d289d) ;
+      80d1b26 bl 8102410(r4:80d39e9) ;
+        804bf56 bl 8102410(r4:80d1aad) ;
+
+a part of decompile func_80d24c8:
+  p_txt_cur = (byte *)(*(int *)(param_1 + 4) + *(int *)(param_1 + 0x14));
+  _dchar = (uint)*p_txt_cur;
+  step = 1;
+  if (0x7f < _dchar) {
+    if (_dchar < 0xe0) {
+      _dchar = p_txt_cur[1] & 0x3f | (_dchar & 0x1f) << 6;
+      step = 2;
+    }
+    else {
+      if (_dchar < 0xf0) {
+        _dchar = p_txt_cur[2] & 0x3f | (_dchar & 0xf) << 0xc | (p_txt_cur[1] & 0x3f) << 6;
+        step = 3;
+      }
+    }
+  }
