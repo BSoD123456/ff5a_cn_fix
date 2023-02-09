@@ -225,41 +225,6 @@ class c_ff5a_sect_text(c_ff5a_sect_tab):
         self._parse_index(0x10)
         report('info', f'found {self.cnt_index} texts')
 
-    def _dec_text(self, tpos, tlen, tidx):
-        r = []
-        i = 0
-        while i < tlen:
-            pi = tpos + i
-            c = self.U8(pi)
-            if c == 0:
-                if not i == tlen - 1:
-                    report('warning', f'EOS at {i}/{tlen-1}')
-                    i += 1
-                    #continue
-                else:
-                    break
-            elif c < 0x80:
-                i += 1
-            elif c < 0xe0:
-                c2 = self.U8(pi + 1)
-                c = (((c & 0x1f) << 6) | (c2 & 0x3f))
-                i += 2
-            elif c < 0xf0:
-                c2 = self.U8(pi + 1)
-                c3 = self.U8(pi + 2)
-                c = (((c & 0x1f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f))
-                i += 3
-            else:
-                i += 1
-            r.append(c)
-        else:
-            report('warning', f'something wrong when decode text 0x{tidx:x}')
-        return r
-
-    def get_text(self, idx):
-        tpos, tlen = self.get_item(idx)
-        return self._dec_text(tpos, tlen, idx)
-
 class c_ff5a_sect_font(c_ff5a_sect_tab):
 
     def _parse_head(self):
@@ -505,8 +470,17 @@ class c_ff5a_parser_text:
         self.text = txt
         self.draw = c_text_drawer(fnt)
 
-    def get_text(self, tidx):
-        return self.text.get_text(tidx)
+    def dec_text(self, tpos, tlen, tidx):
+        r = []
+        for i in range(tlen):
+            pi = tpos + i
+            c = self.text.U8(pi)
+            r.append(c)
+        return r
+
+    def get_text(self, idx):
+        tpos, tlen = self.text.get_item(idx)
+        return self.dec_text(tpos, tlen, idx)
 
     def draw_text(self, tidx, cols = None, pad_col = 3, pad_row = 5):
         txt = self.get_text(tidx)
@@ -517,6 +491,69 @@ class c_ff5a_parser_text:
     def draw_comment(self, cmt, fw = 8, fh = 12):
         s = str(cmt)
         return self.draw.draw_comment(fw*len(s), fh, s)
+
+class c_ff5a_parser_text_jp(c_ff5a_parser_text):
+
+    def dec_text(self, tpos, tlen, tidx):
+        r = []
+        i = 0
+        while i < tlen:
+            pi = tpos + i
+            c = self.text.U8(pi)
+            if c == 0:
+                if not i == tlen - 1:
+                    report('warning', f'EOS at {i}/{tlen-1}')
+                    i += 1
+                    #continue
+                else:
+                    break
+            elif c < 0x80:
+                i += 1
+            elif c < 0xe0:
+                c2 = self.text.U8(pi + 1)
+                c = (((c & 0x1f) << 6) | (c2 & 0x3f))
+                i += 2
+            elif c < 0xf0:
+                c2 = self.text.U8(pi + 1)
+                c3 = self.text.U8(pi + 2)
+                c = (((c & 0x1f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f))
+                i += 3
+            else:
+                i += 1
+            r.append(c)
+        else:
+            report('warning', f'something wrong when decode text 0x{tidx:x}')
+        return r
+
+class c_ff5a_parser_text_cn(c_ff5a_parser_text):
+
+    def dec_text(self, tpos, tlen, tidx):
+        r = []
+        i = 0
+        while i < tlen:
+            pi = tpos + i
+            c = self.text.U8(pi)
+            if c == 0:
+                if not i == tlen - 1:
+                    report('warning', f'EOS at {i}/{tlen-1}')
+                    i += 1
+                    #continue
+                else:
+                    break
+            elif c < 0xe0:
+                i += 1
+            elif c < 0xf0:
+                c2 = self.text.U8(pi + 1)
+                c = (((c - 0xdf) << 8 ) | c2) - 0x20
+                i += 2
+            else:
+                c2 = self.text.U8(pi + 1)
+                c = ((c << 8) | c2)
+                i += 2
+            r.append(c)
+        else:
+            report('warning', f'something wrong when decode text 0x{tidx:x}')
+        return r
 
 class c_ff5a_parser:
 
@@ -529,8 +566,8 @@ class c_ff5a_parser:
             raw = fd.read()
         self.rom = c_ff5a_sect_rom(raw, 0)
 
-    def new_txt_parser(self, name, txt_idx, fnt_idx):
-        self.txt_parser[name] = c_ff5a_parser_text(
+    def new_txt_parser(self, name, txt_idx, fnt_idx, cls):
+        self.txt_parser[name] = cls(
             self.rom.tabs['text'][txt_idx],
             self.rom.tabs['font'][fnt_idx])
 
@@ -641,5 +678,5 @@ if __name__ == '__main__':
 ##            ),
 ##        )
 ##    )
-    psr.new_txt_parser('jp', 0, 0)
-    psr.new_txt_parser('ch', 1, 4)
+    psr.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
+    psr.new_txt_parser('ch', 1, 4, c_ff5a_parser_text_cn)
