@@ -232,8 +232,12 @@ class c_ff5a_sect_text(c_ff5a_sect_tab):
             pi = tpos + i
             c = self.U8(pi)
             if c == 0:
-                assert i == tlen - 1
-                break
+                if not i == tlen - 1:
+                    report('warning', f'EOS at {i}/{tlen-1}')
+                    i += 1
+                    #continue
+                else:
+                    break
             elif c < 0x80:
                 i += 1
             elif c < 0xe0:
@@ -310,7 +314,7 @@ class c_text_drawer:
         if self._pil_img:
             return self._pil_img
         try:
-            from PIL import Image
+            from PIL import Image, ImageDraw
         except:
             print('''
 please install Pillow with
@@ -323,6 +327,7 @@ or
 python -m pip install pillow''')
             raise
         c_text_drawer._pil_img = Image
+        c_text_drawer.pil_drw = ImageDraw
         return Image
 
 ##    PAL = [
@@ -381,8 +386,43 @@ python -m pip install pillow''')
             yield rline, False
 
     @staticmethod
+    def draw_padding(width, height):
+        clr_blank = c_text_drawer.PAL[0]
+        for y in range(height):
+            rline = []
+            for x in range(width):
+                rline.append(clr_blank)
+            yield rline, True
+        while True:
+            rline = []
+            for x in range(width):
+                rline.append(clr_blank)
+            yield rline, False
+
+    def draw_comment(self, width, height, txt):
+        pal = self.PAL
+        im = self.pil_img.new('RGB', (width, height), pal[0])
+        dr = self.pil_drw.Draw(im)
+        dr.text((0, 0), txt, fill = pal[2])
+        sq = im.getdata()
+        w = im.width
+        h = im.height
+        for y in range(h):
+            p = y * w
+            rline = []
+            for x in range(w):
+                v = sq[p + x]
+                rline.append(v)
+            yield rline, True
+        while True:
+            rline = []
+            for x in range(w):
+                rline.append(pal[0])
+            yield rline, False
+
+    @staticmethod
     def draw_horiz(*blks, pad = 5):
-        pal = c_text_drawer.PAL
+        clr_blank = c_text_drawer.PAL[0]
         rwidth = 0
         while True:
             unfinished = False
@@ -396,7 +436,7 @@ python -m pip install pillow''')
                 rline.extend(rl)
                 if i < blen -1:
                     for x in range(pad):
-                        rline.append(pal[0])
+                        rline.append(clr_blank)
             if not rwidth:
                 rwidth = len(rline)
             if unfinished:
@@ -406,12 +446,12 @@ python -m pip install pillow''')
         while True:
             rline = []
             for x in range(rwidth):
-                rline.append(pal[0])
+                rline.append(clr_blank)
             yield rline, False
 
     @staticmethod
     def draw_vert(*blks, pad = 10):
-        pal = c_text_drawer.PAL
+        clr_blank = c_text_drawer.PAL[0]
         blk_info = []
         for blk in blks:
             rl, uf = next(blk)
@@ -423,8 +463,8 @@ python -m pip install pillow''')
             blk, rl, rlen = blk_info[i]
             rl_pad = []
             for x in range(rwidth - rlen):
-                rl_pad.append(pal[0])
-                rl.append(pal[0])
+                rl_pad.append(clr_blank)
+                rl.append(clr_blank)
             yield rl, True
             for rl, uf in blk:
                 if not uf:
@@ -436,12 +476,12 @@ python -m pip install pillow''')
                 for y in range(pad):
                     rline = []
                     for x in range(rwidth):
-                        rline.append(pal[0])
+                        rline.append(clr_blank)
                     yield rline, True
         while True:
             rline = []
             for x in range(rwidth):
-                rline.append(pal[0])
+                rline.append(clr_blank)
             yield rline, False
 
     def make_img(self, blk):
@@ -459,15 +499,64 @@ python -m pip install pillow''')
         im.putdata(dat)
         return im
 
+class c_ff5a_parser_text:
+
+    def __init__(self, txt, fnt):
+        self.text = txt
+        self.draw = c_text_drawer(fnt)
+
+    def get_text(self, tidx):
+        return self.text.get_text(tidx)
+
+    def draw_text(self, tidx, cols = None, pad_col = 3, pad_row = 5):
+        txt = self.get_text(tidx)
+        if cols is None:
+            cols = len(txt)
+        return self.draw.draw_block(txt, cols, pad_col, pad_row)
+
+    def draw_comment(self, cmt, fw = 8, fh = 12):
+        s = str(cmt)
+        return self.draw.draw_comment(fw*len(s), fh, s)
+
 class c_ff5a_parser:
 
     def __init__(self, path):
         self.rom_path = path
+        self.txt_parser = {}
 
     def load_rom(self):
         with open(self.rom_path, 'rb') as fd:
             raw = fd.read()
         self.rom = c_ff5a_sect_rom(raw, 0)
+
+    def new_txt_parser(self, name, txt_idx, fnt_idx):
+        self.txt_parser[name] = c_ff5a_parser_text(
+            self.rom.tabs['text'][txt_idx],
+            self.rom.tabs['font'][fnt_idx])
+
+    @property
+    def one_txt_parser(self):
+        for k in self.txt_parser:
+            return self.txt_parser[k]
+        return None
+
+    def draw_txt_parser(self, lines, cols = 10, mkimg = True):
+        opsr = self.one_txt_parser
+        tdr = self.one_txt_parser.draw
+        if not tdr:
+            return None
+        vblks = []
+        for tidx in lines:
+            hblks = [opsr.draw_comment(tidx)]
+            for nm, tpsr in self.txt_parser.items():
+                hblks.append(tpsr.draw_text(tidx, cols))
+            if hblks:
+                vblks.append(tdr.draw_horiz(*hblks, pad = 20))
+        blk = tdr.draw_vert(*vblks)
+        if mkimg:
+            return tdr.make_img(blk)
+        else:
+            return blk
 
 if __name__ == '__main__':
     from hexdump import hexdump
@@ -540,14 +629,17 @@ if __name__ == '__main__':
                 c = s[i] + (s[i+1] << 8)
                 fntset.add(c)
         return fntset
-    dtjp = c_text_drawer(fntjp)
-    dtcn = c_text_drawer(fntcn)
-    im = dtjp.make_img(
-        dtjp.draw_vert(
-            dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 3),
-            dtjp.draw_horiz(
-                dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 5),
-                dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 3),
-            ),
-        )
-    )
+##    dtjp = c_text_drawer(fntjp)
+##    dtcn = c_text_drawer(fntcn)
+##    im = dtjp.make_img(
+##        dtjp.draw_vert(
+##            dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 3),
+##            dtjp.draw_horiz(
+##                dtjp.draw_comment(30, 10, '123'),
+##                dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 5),
+##                dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 3),
+##            ),
+##        )
+##    )
+    psr.new_txt_parser('jp', 0, 0)
+    psr.new_txt_parser('ch', 1, 4)
