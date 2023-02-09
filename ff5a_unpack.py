@@ -299,16 +299,6 @@ class c_ff5a_sect_rom(c_ff5a_sect):
                 tabs[sign] = tab
         self.tabs = tabs
 
-class c_ff5a_parser:
-
-    def __init__(self, path):
-        self.rom_path = path
-
-    def load_rom(self):
-        with open(self.rom_path, 'rb') as fd:
-            raw = fd.read()
-        self.rom = c_ff5a_sect_rom(raw, 0)
-
 class c_text_drawer:
 
     def __init__(self, font_tab):
@@ -335,21 +325,24 @@ python -m pip install pillow''')
         c_text_drawer._pil_img = Image
         return Image
 
-    PAL = [
-        (255, 255, 255), (230, 230, 230), (200, 200, 200), (0, 0, 0),
-        (240, 0, 240), (240, 240, 0), (0, 240, 240),
-        (0, 240, 0), (0, 0, 240), (240, 0, 0),
-        (120, 0, 120), (120, 120, 0), (0, 120, 120),
-        (0, 120, 0), (0, 0, 120), (120, 0, 0),
-    ]
+##    PAL = [
+##        (255, 255, 255), (230, 230, 230), (200, 200, 200), (0, 0, 0),
+##        (240, 0, 240), (240, 240, 0), (0, 240, 240),
+##        (0, 240, 0), (0, 0, 240), (240, 0, 0),
+##        (120, 0, 120), (120, 120, 0), (0, 120, 120),
+##        (0, 120, 0), (0, 0, 120), (120, 0, 0),
+##    ]
+    PAL = [(255, 255, 255), (100, 100, 100), (200, 200, 200), (0, 0, 0)]
 
-    def draw_block(self, text, cols, pad_col = 3, pad_row = 5):
+    def draw_block(self, text, cols, pad_col = 3, pad_row = 5, bits = 2):
         tlen = len(text)
         pal = self.PAL
         font = self.font
         fw = font.font_width
         fh = font.font_height
         fp = font.font_pad
+        dpb = 8 // bits
+        bmsk = (1 << bits) - 1
         assert fw % 2 == 0
         for i in range(0, tlen, cols):
             ed_row = min(i + cols, tlen)
@@ -362,18 +355,16 @@ python -m pip install pillow''')
                         ch = row[ch_ridx]
                         ch_pos, ch_sz = font.get_item(ch)
                         ch_pos += fp
-                        for x in range(0, fw, 2):
-                            p_pos = ch_pos + (y * fw + x) // 2
+                        for x in range(0, fw, dpb):
+                            p_pos = ch_pos + (y * fw + x) // dpb
                             px = font.U8(p_pos)
-                            print(f'char ({x},{y}) 0x{p_pos:x}: 0x{px:x}')
-                            rline.append(pal[px & 0xf])
-                            rline.append(pal[px >> 4])
+                            for _ in range(dpb):
+                                rline.append(pal[px & bmsk])
+                                px >>= bits
                     else:
-                        print(f'pad_right, {ch_ridx}/{rlen}')
                         for x in range(fw):
                             rline.append(pal[0])
                     if ch_ridx < cols - 1:
-                        print(f'padding {pad_col}')
                         for x in range(pad_col):
                             rline.append(pal[0])
                 yield rline, True
@@ -426,7 +417,7 @@ python -m pip install pillow''')
             rl, uf = next(blk)
             if uf:
                 blk_info.append((blk, rl, len(rl)))
-        rwidth = max(len(p[2]) for p in blk_info)
+        rwidth = max(p[2] for p in blk_info)
         blen = len(blk_info)
         for i in range(blen):
             blk, rl, rlen = blk_info[i]
@@ -467,6 +458,16 @@ python -m pip install pillow''')
         im = self.pil_img.new('RGB', (bw, bh))
         im.putdata(dat)
         return im
+
+class c_ff5a_parser:
+
+    def __init__(self, path):
+        self.rom_path = path
+
+    def load_rom(self):
+        with open(self.rom_path, 'rb') as fd:
+            raw = fd.read()
+        self.rom = c_ff5a_sect_rom(raw, 0)
 
 if __name__ == '__main__':
     from hexdump import hexdump
@@ -541,5 +542,12 @@ if __name__ == '__main__':
         return fntset
     dtjp = c_text_drawer(fntjp)
     dtcn = c_text_drawer(fntcn)
-    #im = dtjp.make_img(dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 5))
-    im = dtjp.make_img(dtjp.draw_block([10], 1))
+    im = dtjp.make_img(
+        dtjp.draw_vert(
+            dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 3),
+            dtjp.draw_horiz(
+                dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 5),
+                dtjp.draw_block([10, 11, 12, 13, 14, 15, 16, 17, 18], 3),
+            ),
+        )
+    )
