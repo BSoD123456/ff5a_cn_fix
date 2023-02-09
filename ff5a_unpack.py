@@ -223,6 +223,38 @@ class c_ff5a_sect_text(c_ff5a_sect_tab):
     def _parse_head(self):
         self.pos_last = self.U32(0xc)
         self._parse_index(0x10)
+        report('info', f'found {self.cnt_index} texts')
+
+    def _dec_text(self, tpos, tlen, tidx):
+        r = []
+        i = 0
+        while i < tlen:
+            pi = tpos + i
+            c = self.U8(pi)
+            if c == 0:
+                assert i == tlen - 1
+                break
+            elif c < 0x80:
+                i += 1
+            elif c < 0xe0:
+                c2 = self.U8(pi + 1)
+                c = (((c & 0x1f) << 6) | (c2 & 0x3f))
+                i += 2
+            elif c < 0xf0:
+                c2 = self.U8(pi + 1)
+                c3 = self.U8(pi + 2)
+                c = (((c & 0x1f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f))
+                i += 3
+            else:
+                i += 1
+            r.append(c)
+        else:
+            report('warning', f'something wrong when decode text 0x{tidx:x}')
+        return r
+
+    def get_text(self, idx):
+        tpos, tlen = self.get_item(idx)
+        return self._dec_text(tpos, tlen, idx)
 
 class c_ff5a_sect_font(c_ff5a_sect_tab):
 
@@ -237,6 +269,7 @@ class c_ff5a_sect_font(c_ff5a_sect_tab):
         self.font_width = font_width
         self.font_pad = font_pad
         self.font_size = sz_font
+        report('info', f'found 0x{self.cnt_index:x} chars')
 
 class c_ff5a_sect_rom(c_ff5a_sect):
 
@@ -337,7 +370,7 @@ if __name__ == '__main__':
         yield
     cf = _cmp_font(8)
     #next(cf)
-    next(clt)
+    #next(clt)
     def _count_font(txt):
         fntset = set()
         for i in range(txt.cnt_index):
