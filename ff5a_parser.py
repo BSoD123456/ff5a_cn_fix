@@ -507,6 +507,10 @@ class c_ff5a_parser_text:
         s = str(cmt)
         return self.draw.draw_comment(fw*len(s), fh, s)
 
+    @staticmethod
+    def is_ctrl(c):
+        return (c & 0xf000) == 0xf000
+
 class c_ff5a_parser_text_jp(c_ff5a_parser_text):
 
     def dec_text(self, tpos, tlen, tidx, mark_ctrl = True):
@@ -627,9 +631,9 @@ class c_ff5a_parser:
     def parse(self):
         self.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
         self.new_txt_parser('cn', 1, 4, c_ff5a_parser_text_cn)
-        self.txt_ctrl_set = {}
-        self.txt_ctrl_set['jp'] = self.count_ctrl_sym('jp')
-        self.txt_ctrl_set['cn'] = self.count_ctrl_sym('cn')
+##        self.txt_ctrl_set = {}
+##        self.txt_ctrl_set['jp'] = self.count_ctrl_sym('jp')
+##        self.txt_ctrl_set['cn'] = self.count_ctrl_sym('cn')
 
     def count_ctrl_sym(self, name):
         tpsr = self.txt_parser[name]
@@ -637,7 +641,7 @@ class c_ff5a_parser:
         for i in range(tpsr.text.cnt_index):
             t = tpsr.get_text(i)
             for c in t:
-                if c & 0xf000:
+                if tpsr.is_ctrl(c):
                     ctrl_set.add(c)
         return sorted(ctrl_set)
 
@@ -707,7 +711,7 @@ class c_ff5a_parser:
                 cseq = []
                 cset = {}
                 for c in t:
-                    if (c & 0xf000) != 0xf000 or c in ignore:
+                    if not tpsr.is_ctrl(c) or c in ignore:
                         continue
                     cseq.append(c)
                     if not c in cset:
