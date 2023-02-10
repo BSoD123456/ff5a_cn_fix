@@ -477,6 +477,7 @@ class c_ff5a_parser_text:
 
     def __init__(self, txt, fnt):
         self.text = txt
+        self.font = fnt
         self.draw = c_text_drawer(fnt)
 
     def dec_text(self, tpos, tlen, tidx):
@@ -491,11 +492,14 @@ class c_ff5a_parser_text:
         tpos, tlen = self.text.get_item(idx)
         return self.dec_text(tpos, tlen, idx)
 
+    def draw_chars(self, chars, cols = None, pad_col = 3, pad_row = 5):
+        if cols is None:
+            cols = len(chars)
+        return self.draw.draw_block(chars, cols, pad_col, pad_row)
+
     def draw_text(self, tidx, cols = None, pad_col = 3, pad_row = 5):
         txt = self.get_text(tidx)
-        if cols is None:
-            cols = len(txt)
-        return self.draw.draw_block(txt, cols, pad_col, pad_row)
+        return self.draw_chars(txt, cols, pad_col, pad_row)
 
     def draw_comment(self, cmt, fw = 8, fh = 12):
         s = str(cmt)
@@ -503,7 +507,8 @@ class c_ff5a_parser_text:
 
 class c_ff5a_parser_text_jp(c_ff5a_parser_text):
 
-    def dec_text(self, tpos, tlen, tidx):
+    def dec_text(self, tpos, tlen, tidx, mark_ctrl = True):
+        fmx = self.font.cnt_index
         r = []
         i = 0
         while i < tlen:
@@ -529,6 +534,8 @@ class c_ff5a_parser_text_jp(c_ff5a_parser_text):
                 i += 3
             else:
                 i += 1
+            if mark_ctrl and c >= fmx:
+                c |= 0xf000
             r.append(c)
         else:
             report('warning', f'something wrong when decode text 0x{tidx:x}')
@@ -591,7 +598,7 @@ class c_ff5a_parser:
 
     def draw_txt_parser(self, lines, cols = 10, mkimg = True):
         opsr = self.one_txt_parser
-        tdr = self.one_txt_parser.draw
+        tdr = opsr.draw
         if not tdr:
             return None
         vblks = []
@@ -607,6 +614,167 @@ class c_ff5a_parser:
         else:
             return blk
 
+    def draw_txt_chars(self, name, chars, cols = 16, mkimg = True):
+        tpsr = self.txt_parser[name]
+        blk = tpsr.draw_chars(chars, cols)
+        if mkimg:
+            return tpsr.draw.make_img(blk)
+        else:
+            return blk
+
+    def parse(self):
+        self.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
+        self.new_txt_parser('cn', 1, 4, c_ff5a_parser_text_cn)
+        self.txt_ctrl_set = {}
+        self.txt_ctrl_set['jp'] = self.count_ctrl_sym('jp')
+        self.txt_ctrl_set['cn'] = self.count_ctrl_sym('cn')
+
+    def count_ctrl_sym(self, name):
+        tpsr = self.txt_parser[name]
+        ctrl_set = set()
+        for i in range(tpsr.text.cnt_index):
+            t = tpsr.get_text(i)
+            for c in t:
+                if c & 0xf000:
+                    ctrl_set.add(c)
+        return sorted(ctrl_set)
+
+    def count_uni_chars(self, name, skip_even = False):
+        tpsr = self.txt_parser[name]
+        mul = set()
+        uni = {}
+        uni_r = {}
+        if skip_even:
+            trng = range(1, tpsr.text.cnt_index, 2)
+        else:
+            trng = range(tpsr.text.cnt_index)
+        for i in trng:
+            t = tpsr.get_text(i)
+            for c in t:
+                if c in uni:
+                    _i = uni[c]
+                    _u = uni_r[_i]
+                    _u.remove(c)
+                    if not _u:
+                        del uni_r[_i]
+                    del uni[c]
+                    mul.add(c)
+                elif c in mul:
+                    pass
+                else:
+                    uni[c] = i
+                    if not i in uni_r:
+                        uni_r[i] = []
+                    uni_r[i].append(c)
+        return uni_r
+
+    def draw_txt_uni_chars(self, name, skip_even = False,
+            cols1 = 5, cols2 = 10, mkimg = True):
+        ucinfo = self.count_uni_chars(name, skip_even)
+        tpsr = self.txt_parser[name]
+        tdr = tpsr.draw
+        vblks = []
+        for ti, ucs in ucinfo.items():
+            vblks.append(tdr.draw_horiz(
+                tpsr.draw_comment(ti),
+                tpsr.draw_chars(ucs, cols1),
+                tpsr.draw_text(ti, cols2),
+            ))
+        blk = tdr.draw_vert(*vblks)
+        if mkimg:
+            return tdr.make_img(blk)
+        else:
+            return blk
+
+    TXT_IGNORE_CTRL = {}
+    def cmp_ctrl_sym(self):
+        tpsrs = []
+        for nm, tpsr in self.txt_parser.items():
+            tpsrs.append(tpsr)
+        r1 = {}
+        r2 = {}
+        plen = len(tpsrs)
+        for ti in range(1, tpsrs[0].text.cnt_index, 2):
+            cseqs = []
+            csets = []
+            csa = set()
+            for i, tpsr in enumerate(tpsrs):
+                t = tpsr.get_text(ti)
+                cseq = []
+                cset = {}
+                for c in t:
+                    if (c & 0xf000) != 0xf000:
+                        continue
+                    cseq.append(c)
+                    if not c in cset:
+                        cset[c] = 0
+                    cset[c] += 1
+                    csa.add(c)
+                cseqs.append(cseq)
+                csets.append(cset)
+            for cs in csa:
+                ccnt = min(cset[cs] if cs in cset else 0 for cset in csets)
+                if ccnt > 0:
+                    for cset in csets:
+                        cset[cs] -= ccnt
+                        if cset[cs] < 1:
+                            del cset[cs]
+            if any(csets):
+                r1[ti] = csets
+                continue
+            idxs = [0] * plen
+            cnt_eos = 0
+            while True:
+                cur_cs = None
+                unmatch = False
+                for i in range(plen):
+                    cseq = cseqs[i]
+                    _eos = False
+                    while True:
+                        idx = idxs[i]
+                        if idx >= len(cseq):
+                            _eos = True
+                            break
+                        c = cseq[idx]
+                        idxs[i] += 1
+                        if not c in self.TXT_IGNORE_CTRL:
+                            break
+                    if _eos:
+                        cnt_eos += 1
+                        continue
+                    if i == 0:
+                        cur_cs = c
+                    elif c != cur_cs:
+                        unmatch = True
+                        break
+                else:
+                    if 0 < cnt_eos < plen:
+                        unmatch = True
+                if unmatch:
+                    r2[ti] =  cseqs
+                    break
+                elif cnt_eos == plen:
+                    break
+        return r1, r2
+
+    TXT_FNTCN_JPRNG = (0x99, 0x13b)
+    def guess_non_trans_text(self):
+        tpsr = self.txt_parser['cn']
+        r0, r1 = self.TXT_FNTCN_JPRNG
+        r = []
+        for i in range(1, tpsr.text.cnt_index, 2):
+            t = tpsr.get_text(i)
+            if len(t) < 2:
+                continue
+            for c in t:
+                if r0 <= c < r1:
+                    r.append(i)
+                    break
+        return r
+
+    def guess_ctrl_fault(self):
+        pass
+
 if __name__ == '__main__':
     from hexdump import hexdump
     from pprint import pprint
@@ -614,6 +782,7 @@ if __name__ == '__main__':
     #psr = c_ff5a_parser('ff5ajp.gba')
     psr = c_ff5a_parser('ff5acn.gba')
     psr.load_rom()
+    psr.parse()
     txtjp = psr.rom.tabs['text'][0]
     txtcn = psr.rom.tabs['text'][1]
     fntjp = psr.rom.tabs['font'][0]
@@ -692,8 +861,8 @@ if __name__ == '__main__':
 ##            ),
 ##        )
 ##    )
-    psr.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
-    psr.new_txt_parser('cn', 1, 4, c_ff5a_parser_text_cn)
+##    psr.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
+##    psr.new_txt_parser('cn', 1, 4, c_ff5a_parser_text_cn)
     tpjp = psr.txt_parser['jp']
     tpcn = psr.txt_parser['cn']
     def _count_ctrl_sym(tp):
@@ -704,7 +873,7 @@ if __name__ == '__main__':
                 if c > 0x4df:
                     cs.add(c)
         return sorted(cs)
-    csjp = _count_ctrl_sym(tpjp)
+    #csjp = _count_ctrl_sym(tpjp)
     #cscn = _count_ctrl_sym(tpcn)
     def _find_non_ctrl():
         r = {}
@@ -751,14 +920,15 @@ if __name__ == '__main__':
                 if not cjp in csjp:
                     continue
                 ccn = tcn[j]
-                if not (ccn & 0xf000):
-                    break
-                ccn &= 0xfff
+                #if not (ccn & 0xf000):
+                #    break
+                #ccn &= 0xfff
                 if not cjp == ccn:
                     break
             else:
                 r.append(i)
         return r
-    tnt = _find_non_trans()
-    im = psr.draw_txt_parser(tnt[:100])
-    im.save('out.png')
+    #tnt = _find_non_trans()
+    #tnt = psr.guess_non_trans_text()
+    #im = psr.draw_txt_parser(tnt[:])
+    #im.save('out.png')
