@@ -495,6 +495,8 @@ class c_ff5a_parser_text:
     def draw_chars(self, chars, cols = None, pad_col = 3, pad_row = 5):
         if cols is None:
             cols = len(chars)
+            if not cols:
+                cols = 1
         return self.draw.draw_block(chars, cols, pad_col, pad_row)
 
     def draw_text(self, tidx, cols = None, pad_col = 3, pad_row = 5):
