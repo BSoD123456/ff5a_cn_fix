@@ -686,24 +686,26 @@ class c_ff5a_parser:
         else:
             return blk
 
-    TXT_IGNORE_CTRL = {}
-    def cmp_ctrl_sym(self):
+    def cmp_ctrl_sym(self, ignore = []):
         tpsrs = []
         for nm, tpsr in self.txt_parser.items():
             tpsrs.append(tpsr)
-        r1 = {}
-        r2 = {}
+        r1 = []
+        r2 = []
         plen = len(tpsrs)
         for ti in range(1, tpsrs[0].text.cnt_index, 2):
             cseqs = []
             csets = []
             csa = set()
+            skip_empty = False
             for i, tpsr in enumerate(tpsrs):
                 t = tpsr.get_text(ti)
+                if not t:
+                    t = tpsr.get_text(ti - 1)
                 cseq = []
                 cset = {}
                 for c in t:
-                    if (c & 0xf000) != 0xf000:
+                    if (c & 0xf000) != 0xf000 or c in ignore:
                         continue
                     cseq.append(c)
                     if not c in cset:
@@ -720,7 +722,7 @@ class c_ff5a_parser:
                         if cset[cs] < 1:
                             del cset[cs]
             if any(csets):
-                r1[ti] = csets
+                r1.append((ti, csets))
                 continue
             idxs = [0] * plen
             cnt_eos = 0
@@ -729,19 +731,12 @@ class c_ff5a_parser:
                 unmatch = False
                 for i in range(plen):
                     cseq = cseqs[i]
-                    _eos = False
-                    while True:
-                        idx = idxs[i]
-                        if idx >= len(cseq):
-                            _eos = True
-                            break
-                        c = cseq[idx]
-                        idxs[i] += 1
-                        if not c in self.TXT_IGNORE_CTRL:
-                            break
-                    if _eos:
+                    idx = idxs[i]
+                    if idx >= len(cseq):
                         cnt_eos += 1
                         continue
+                    c = cseq[idx]
+                    idxs[i] += 1
                     if i == 0:
                         cur_cs = c
                     elif c != cur_cs:
@@ -751,7 +746,7 @@ class c_ff5a_parser:
                     if 0 < cnt_eos < plen:
                         unmatch = True
                 if unmatch:
-                    r2[ti] =  cseqs
+                    r2.append((ti, cseqs))
                     break
                 elif cnt_eos == plen:
                     break
@@ -773,7 +768,8 @@ class c_ff5a_parser:
         return r
 
     def guess_ctrl_fault(self):
-        pass
+        r1, r2 = self.cmp_ctrl_sym({0xf4e0, 0xf509})
+        return sorted((*(i for i, cs in r1), *(i for i, cs in r2)))
 
 if __name__ == '__main__':
     from hexdump import hexdump
@@ -932,3 +928,8 @@ if __name__ == '__main__':
     #tnt = psr.guess_non_trans_text()
     #im = psr.draw_txt_parser(tnt[:])
     #im.save('out.png')
+    gcsf = psr.guess_ctrl_fault()
+    #im = psr.draw_txt_parser([v for i in gcsf for v in (i-3, i-2, i-1, i, i+1, i+2)])
+    im = psr.draw_txt_parser([v for i in gcsf for v in (i-1, i)])
+    im.save('occs2.png')
+    
