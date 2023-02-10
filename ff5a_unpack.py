@@ -218,6 +218,10 @@ class c_ff5a_sect_tab(c_ff5a_sect):
         else:
             return rtxt
 
+    def get_offset(self, idx):
+        pos, ln = self.get_item(idx)
+        return self.offset + pos
+
 class c_ff5a_sect_text(c_ff5a_sect_tab):
 
     def _parse_head(self):
@@ -308,6 +312,7 @@ python -m pip install pillow''')
         tlen = len(text)
         pal = self.PAL
         font = self.font
+        fmx = font.cnt_index
         fw = font.font_width
         fh = font.font_height
         fp = font.font_pad
@@ -323,14 +328,18 @@ python -m pip install pillow''')
                 for ch_ridx in range(cols):
                     if ch_ridx < rlen:
                         ch = row[ch_ridx]
-                        ch_pos, ch_sz = font.get_item(ch)
-                        ch_pos += fp
-                        for x in range(0, fw, dpb):
-                            p_pos = ch_pos + (y * fw + x) // dpb
-                            px = font.U8(p_pos)
-                            for _ in range(dpb):
-                                rline.append(pal[px & bmsk])
-                                px >>= bits
+                        if ch < fmx:
+                            ch_pos, ch_sz = font.get_item(ch)
+                            ch_pos += fp
+                            for x in range(0, fw, dpb):
+                                p_pos = ch_pos + (y * fw + x) // dpb
+                                px = font.U8(p_pos)
+                                for _ in range(dpb):
+                                    rline.append(pal[px & bmsk])
+                                    px >>= bits
+                        else:
+                            for x in range(fw):
+                                rline.append(pal[2])
                     else:
                         for x in range(fw):
                             rline.append(pal[0])
@@ -527,7 +536,7 @@ class c_ff5a_parser_text_jp(c_ff5a_parser_text):
 
 class c_ff5a_parser_text_cn(c_ff5a_parser_text):
 
-    def dec_text(self, tpos, tlen, tidx):
+    def dec_text(self, tpos, tlen, tidx, mark_ctrl = True):
         r = []
         i = 0
         while i < tlen:
@@ -547,7 +556,10 @@ class c_ff5a_parser_text_cn(c_ff5a_parser_text):
                 c = (((c - 0xdf) << 8 ) | c2) - 0x20
                 i += 2
             else:
+                #ctrl sym
                 c2 = self.text.U8(pi + 1)
+                if not mark_ctrl:
+                    c &= 0xf
                 c = ((c << 8) | c2)
                 i += 2
             r.append(c)
@@ -597,6 +609,8 @@ class c_ff5a_parser:
 
 if __name__ == '__main__':
     from hexdump import hexdump
+    from pprint import pprint
+    ppr = lambda *a, **ka: pprint(*a, **ka, sort_dicts = False)
     #psr = c_ff5a_parser('ff5ajp.gba')
     psr = c_ff5a_parser('ff5acn.gba')
     psr.load_rom()
@@ -679,4 +693,72 @@ if __name__ == '__main__':
 ##        )
 ##    )
     psr.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
-    psr.new_txt_parser('ch', 1, 4, c_ff5a_parser_text_cn)
+    psr.new_txt_parser('cn', 1, 4, c_ff5a_parser_text_cn)
+    tpjp = psr.txt_parser['jp']
+    tpcn = psr.txt_parser['cn']
+    def _count_ctrl_sym(tp):
+        cs = set()
+        for i in range(tp.text.cnt_index):
+            t = tp.get_text(i)
+            for c in t:
+                if c > 0x4df:
+                    cs.add(c)
+        return sorted(cs)
+    csjp = _count_ctrl_sym(tpjp)
+    #cscn = _count_ctrl_sym(tpcn)
+    def _find_non_ctrl():
+        r = {}
+        for i in range(tpjp.text.cnt_index):
+            tjp = tpjp.get_text(i)
+            tcn = tpcn.get_text(i)
+            cc = {}
+            for c in tjp:
+                if c in csjp:
+                    if not c in cc:
+                        cc[c] = 0
+                    cc[c] += 1
+            cc2 = {}
+            for c in tcn:
+                if c in csjp:
+                    if c in cc:
+                        if cc[c] > 1:
+                            cc[c] -= 1
+                        else:
+                            del cc[c]
+                    else:
+                        if not c in cc2:
+                            cc2[c] = 0
+                        cc2[c] += 1
+            if cc or cc2:
+                r[i] = (cc, cc2)
+        return r
+##    ccmp = _find_non_ctrl()
+##    im = psr.draw_txt_parser([*ccmp.keys()][:30])
+##    im.save('out.png')
+##    for i, (k, (cc1, cc2)) in enumerate(ccmp.items()):
+##        if i >= 30:
+##            break
+##        print(k, {hex(i): v for i, v in cc1.items()}, {hex(i): v for i, v in cc2.items()})
+    def _find_non_trans():
+        r = []
+        for i in range(1, tpjp.text.cnt_index, 2):
+            tjp = tpjp.get_text(i)
+            tcn = tpcn.get_text(i)
+            if not len(tjp) == len(tcn) > 1:
+                continue
+            for j in range(len(tjp)):
+                cjp = tjp[j]
+                if not cjp in csjp:
+                    continue
+                ccn = tcn[j]
+                if not (ccn & 0xf000):
+                    break
+                ccn &= 0xfff
+                if not cjp == ccn:
+                    break
+            else:
+                r.append(i)
+        return r
+    tnt = _find_non_trans()
+    im = psr.draw_txt_parser(tnt[:100])
+    im.save('out.png')
