@@ -928,8 +928,8 @@ if __name__ == '__main__':
     #tnt = psr.guess_non_trans_text()
     #im = psr.draw_txt_parser(tnt[:])
     #im.save('out.png')
-    gcsf = psr.guess_ctrl_fault()
+    #gcsf = psr.guess_ctrl_fault()
     #im = psr.draw_txt_parser([v for i in gcsf for v in (i-3, i-2, i-1, i, i+1, i+2)])
-    im = psr.draw_txt_parser([v for i in gcsf for v in (i-1, i)])
-    im.save('occs2.png')
+    #im = psr.draw_txt_parser([v for i in gcsf for v in (i-1, i)])
+    #im.save('occs2.png')
     
