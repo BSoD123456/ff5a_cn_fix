@@ -203,6 +203,26 @@ class c_ff5a_ocr_parser:
 
     def parse(self):
         self.ocr = CnOcr(det_model_name='naive_det')
+        self.gsr = c_map_guesser()
+        self.gsr.innate({
+            0x2c: ',',
+            0x2e: '.',
+            0x21: '!',
+            0x3f: '?',
+            0x95: '「',
+            0x96: '」',
+            0x91: '…',
+            0x92: ' ',
+            **{i: chr(i) for i in range(0x30, 0x3a)},
+        })
+        self.gsr_norm = {
+            '，': ',',
+            '。': '.',
+            '？': '?',
+            '！': '!',
+        }
+        self.gsr_trim = [' ', '…']
+        self.txt_trim_rng = [(0x99, 0x13b)]
 
     def draw_chars(self, chars, pad = 3):
         blk = self.tpsr.draw_chars(chars, pad_col = pad)
@@ -217,10 +237,16 @@ class c_ff5a_ocr_parser:
         else:
             return rchars
 
-    def pick_text(self, tidxs, trims = [], txt = None):
+    def pick_text(self, tidx_st, tlen_min, trims = None, txt = None):
+        if trims is None:
+            trims = self.txt_trim_rng
         if txt is None:
             txt = []
-        for tidx in tidxs:
+        tlen = 0
+        tidx = (tidx_st // 2) * 2 + 1
+        while tlen < tlen_min:
+            if tidx >= self.tpsr.text.cnt_index:
+                return txt, -1
             t = self.tpsr.get_text(tidx)
             for c in t:
                 if self.tpsr.is_ctrl(c):
@@ -230,7 +256,29 @@ class c_ff5a_ocr_parser:
                         break
                 else:
                     txt.append(c)
-        return txt
+                    tlen += 1
+            tidx += 2
+        return txt, tidx
+
+    def feed_text(self, tidx, tlen_min):
+        stxt, ntidx = self.pick_text(tidx, tlen_min)
+        rtxt = self.ocr_chars(stxt)
+        self.gsr.feed(stxt, rtxt, (tidx, ntidx), self.gsr_norm, self.gsr_trim)
+        return ntidx
+
+    def feed_all(self, tlen_min = 200):
+        tidx = 0
+        tcnt = self.tpsr.text.cnt_index
+        while tidx >= 0:
+            report('feed', f'{tidx}/{tcnt}')
+            tidx = self.feed_text(tidx, tlen_min)
+
+    def get_conflict(self):
+        r = {}
+        for c1, rinfo in self.gsr.cnflct.items():
+           s = [self.gsr.det[c1], *rinfo.keys()]
+           r[c1] = ''.join(s)
+        return r
 
 if __name__ == '__main__':
 
@@ -275,7 +323,8 @@ if __name__ == '__main__':
             rtxt = ocr.ocr_chars(stxt)
             gsr.feed(stxt, rtxt, i, norm, trim)
         return gsr
-    gsr = init_guesser()
-    print(''.join([*gsr.det.values()][15:50]))
-    im = ocr.draw_chars([k for k in gsr.det][15:50])
+    #gsr = init_guesser()
+    #print(''.join([*gsr.det.values()][15:50]))
+    #im = ocr.draw_chars([k for k in gsr.det][15:50])
+    #ocr.feed_all()
     
