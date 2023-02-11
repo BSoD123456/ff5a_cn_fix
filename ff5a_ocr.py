@@ -80,6 +80,11 @@ class c_map_guesser:
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
+    def _guess_match_blk(self, b1, i1, b2, i2, cmt):
+        print('guess block', cmt)
+        print(' '.join(hex(c)[2:] for c in b1))
+        print(''.join(b2))
+
     def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
         trim1 = set()
         trim2 = set()
@@ -89,6 +94,8 @@ class c_map_guesser:
                 trim2.add(t)
         s1 = self._norm_text(s1, {}, trim1)
         s2 = self._norm_text(s2, norm_r, trim2)
+        print('feed', cmt, ''.join(s2))
+        #print(' '.join(hex(c)[2:] for c in s1))
         l1 = len(s1)
         l2 = len(s2)
         i1 = 0
@@ -104,10 +111,12 @@ class c_map_guesser:
                 _i2 = i2 - _lsk2
                 for _ in range(min(_lsk1, _lsk2)):
                     _c1 = s1[_i1]
-                    _c2 = s1[_i2]
+                    _c2 = s2[_i2]
                     self._guess_match(_c1, _i1, _c2, _i2, cmt)
                     _i1 += 1
                     _i2 += 1
+##                self._guess_match_blk(
+##                    sk1, i1 - len(sk1), sk2, i2 - len(sk2), cmt)
                 sk1 = []
                 sk2 = []
             c1 = s1[i1]
@@ -119,11 +128,12 @@ class c_map_guesser:
                     # matched, bypass
                     i1 += 1
                     i2 += 1
+                    #print('matched', c2)
                     lst_matched = True
                     continue
                 # find matched char in s2 next
                 _i2dlt = 0
-                _sk2 = []
+                _sk2 = [c2]
                 for _i2 in range(i2 + 1, min(l2, i2 + self.MAX_LA_SKIP)):
                     _c2 = s2[_i2]
                     if _c2 == c1r:
@@ -136,10 +146,12 @@ class c_map_guesser:
                             f's1 lookahead too mush {i2}+{_i2dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP} at {cmt}')
                     i1 += 1
                     i2 += _i2dlt + 1
+                    #print('sk2+1', ''.join(_sk2))
                     sk2.extend(_sk2)
                     lst_matched = True
                     continue
                 # no matched char found, skip c1
+                #print('sk1+2')
                 sk1.append(c1)
                 i1 += 1
                 lst_matched = False
@@ -151,7 +163,7 @@ class c_map_guesser:
                 assert c2r != c1
                 # find matched char in s1 next
                 _i1dlt = 0
-                _sk1 = []
+                _sk1 = [c1]
                 for _i1 in range(i1 + 1, min(l1, i1 + self.MAX_LA_SKIP)):
                     _c1 = s1[_i1]
                     if _c1 == c2r:
@@ -164,19 +176,24 @@ class c_map_guesser:
                             f's2 lookahead too mush {i1}+{_i1dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP}')
                     i2 += 1
                     i1 += _i1dlt + 1
+                    #print('sk1+1')
                     sk1.extend(_sk1)
                     lst_matched = True
                     continue
                 # no matched char found, skip c2
+                #print('sk2+2', c2)
                 sk2.append(c2)
                 i2 += 1
                 lst_matched = False
                 continue
             # both c1 c2 unknown
+##            sk1.append(c1)
+##            #print('sk2+3', c2)
+##            sk2.append(c2)
+##            lst_matched = False
             self._guess_match(c1, i1, c2, i2, cmt)
             i1 += 1
-            i2 += 2
-            lst_matched = True
+            i2 += 1
 
 class c_ff5a_ocr_parser:
 
@@ -199,20 +216,25 @@ class c_ff5a_ocr_parser:
         else:
             return rchars
 
-    def pick_text(self, tidxs, txt = None):
+    def pick_text(self, tidxs, trims = [], txt = None):
         if txt is None:
             txt = []
         for tidx in tidxs:
             t = self.tpsr.get_text(tidx)
             for c in t:
-                if not self.tpsr.is_ctrl(c):
+                if self.tpsr.is_ctrl(c):
+                    continue
+                for trim_st, trim_ed in trims:
+                    if trim_st <= c < trim_ed:
+                        break
+                else:
                     txt.append(c)
         return txt
 
-    def pick_cn_texts(self, st, cnt, txt = None):
-        pass
-
 if __name__ == '__main__':
+
+    from pprint import pprint
+    ppr = lambda *a, **ka: pprint(*a, **ka, sort_dicts = False)
     
     from ff5a_parser import c_ff5a_parser
     
@@ -233,6 +255,7 @@ if __name__ == '__main__':
             0x3f: '?',
             0x95: '「',
             0x96: '」',
+            0x91: '…',
             0x92: ' ',
             **{i: chr(i) for i in range(0x30, 0x3a)},
         })
@@ -242,12 +265,15 @@ if __name__ == '__main__':
             '？': '?',
             '！': '!',
         }
-        trim = [' ']
+        trim = [' ', '…']
+        trim_rng = [(0x99, 0x13b)]
+        #for i in range(1800, 1820, 20):
         for i in range(1800, 1900, 20):
-            stxt = ocr.pick_text(range(i + 1, i + 21, 2))
+            stxt = ocr.pick_text(range(i + 1, i + 21, 2), trim_rng)
             rtxt = ocr.ocr_chars(stxt)
             gsr.feed(stxt, rtxt, i, norm, trim)
         return gsr
     gsr = init_guesser()
-    im = ocr.draw_chars([k for k in gsr.det][:50])
+    print(''.join([*gsr.det.values()][15:50]))
+    im = ocr.draw_chars([k for k in gsr.det][15:50])
     
