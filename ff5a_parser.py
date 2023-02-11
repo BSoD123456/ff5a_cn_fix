@@ -222,6 +222,17 @@ class c_ff5a_sect_tab(c_ff5a_sect):
         pos, ln = self.get_item(idx)
         return self.offset + pos
 
+    def find_item_by_offset(self, offset):
+        pos = offset - self.offset
+        if pos < 0:
+            return -1
+        for i in range(self.cnt_index):
+            dpos, dlen = self.get_item(i)
+            if dpos <= pos < dpos + dlen:
+                return i, dpos + self.offset
+            elif pos < dpos:
+                return -1
+
 class c_ff5a_sect_text(c_ff5a_sect_tab):
 
     def _parse_head(self):

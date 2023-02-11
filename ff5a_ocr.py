@@ -30,18 +30,86 @@ class c_map_guesser:
         self.det = {}
         self.det_r = {}
         self.nondet = {}
-        self.nondet_r = {}
         self.cnflct = {}
 
-    def _guess_match(self, c1, i1, c2, i2):
-        pass
+    def innate(self, knowledge):
+        for c1, c2 in knowledge.items():
+            self.det[c1] = c2
+            self.det_r[c2] = c1
 
-    def feed(self, s1, s2):
+    def _norm_text(self, s, norm, trim):
+        r = []
+        for c in s:
+            if c in trim:
+                continue
+            if c in norm:
+                c = norm[c]
+            r.append(c)
+        return r
+
+    def _log_conflict(self, c1, i1, c2, i2, cmt):
+        report('info', f'conflict {c1} - {c2} {i1}/{i2} at {cmt}')
+        if c1 in self.cnflct:
+            cc_info = self.cnflct[c1]
+        else:
+            cc_info = {}
+            self.cnflct[c1] = cc_info
+        cc_info[c2] = (cmt, i1, i2)
+
+    def _guess_match(self, c1, i1, c2, i2, cmt):
+        if c1 in self.det:
+            if c2 == self.det[c1]:
+                return
+            self._log_conflict(c1, i1, c2, i2, cmt)
+            return
+        if c2 in self.det_r:
+            assert c1 != self.det_r[c2]
+            self._log_conflict(c1, i1, c2, i2, cmt)
+            return
+        if not c1 in self.nondet:
+            self.nondet[c1] = {}
+        c1r_info = self.nondet[c1]
+        if c2 in c1r_info:
+            self.det[c1] = c2
+            self.det_r[c2] = c1
+            del self.nondet[c1]
+            for cc2, (ccmt, ci1, ci2) in c1r_info.items():
+                if cc2 == c2:
+                    continue
+                self._log_conflict(c1, ci1, cc2, ci2, ccmt)
+        else:
+            c1r_info[c2] = (cmt, i1, i2)
+
+    def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
+        trim1 = set()
+        trim2 = set()
+        for t in trim_r:
+            if t in self.det_r:
+                trim1.add(self.det_r[t])
+                trim2.add(t)
+        s1 = self._norm_text(s1, {}, trim1)
+        s2 = self._norm_text(s2, norm_r, trim2)
         l1 = len(s1)
         l2 = len(s2)
         i1 = 0
         i2 = 0
+        sk1 = []
+        sk2 = []
+        lst_matched = True
         while i1 < l1 and i2 < l2:
+            if lst_matched and sk1 and sk2:
+                _lsk1 = len(sk1)
+                _lsk2 = len(sk2)
+                _i1 = i1 - _lsk1
+                _i2 = i2 - _lsk2
+                for _ in range(min(_lsk1, _lsk2)):
+                    _c1 = s1[_i1]
+                    _c2 = s1[_i2]
+                    self._guess_match(_c1, _i1, _c2, _i2, cmt)
+                    _i1 += 1
+                    _i2 += 1
+                sk1 = []
+                sk2 = []
             c1 = s1[i1]
             c2 = s2[i2]
             if c1 in self.det:
@@ -51,23 +119,30 @@ class c_map_guesser:
                     # matched, bypass
                     i1 += 1
                     i2 += 1
+                    lst_matched = True
                     continue
                 # find matched char in s2 next
                 _i2dlt = 0
+                _sk2 = []
                 for _i2 in range(i2 + 1, min(l2, i2 + self.MAX_LA_SKIP)):
                     _c2 = s2[_i2]
                     if _c2 == c1r:
                         _i2dlt = _i2 - i2
                         break
+                    _sk2.append(_c2)
                 if _i2dlt > 0:
                     if _i2dlt >= self.MAX_LA_WARN:
                         report('warning',
-                            f's1 lookahead too mush {i2}+{_i2dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP}')
+                            f's1 lookahead too mush {i2}+{_i2dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP} at {cmt}')
                     i1 += 1
                     i2 += _i2dlt + 1
+                    sk2.extend(_sk2)
+                    lst_matched = True
                     continue
                 # no matched char found, skip c1
+                sk1.append(c1)
                 i1 += 1
+                lst_matched = False
                 continue
             # unknown c1
             if c2 in self.det_r:
@@ -76,25 +151,32 @@ class c_map_guesser:
                 assert c2r != c1
                 # find matched char in s1 next
                 _i1dlt = 0
+                _sk1 = []
                 for _i1 in range(i1 + 1, min(l1, i1 + self.MAX_LA_SKIP)):
                     _c1 = s1[_i1]
                     if _c1 == c2r:
                         _i1dlt = _i1 - i1
                         break
+                    _sk1.append(_c1)
                 if _i1dlt > 0:
                     if _i1dlt >= self.MAX_LA_WARN:
                         report('warning',
                             f's2 lookahead too mush {i1}+{_i1dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP}')
                     i2 += 1
                     i1 += _i1dlt + 1
+                    sk1.extend(_sk1)
+                    lst_matched = True
                     continue
                 # no matched char found, skip c2
+                sk2.append(c2)
                 i2 += 1
+                lst_matched = False
                 continue
             # both c1 c2 unknown
-            self._guess_match(c1, i1, c2, i2)
+            self._guess_match(c1, i1, c2, i2, cmt)
             i1 += 1
             i2 += 2
+            lst_matched = True
 
 class c_ff5a_ocr_parser:
 
@@ -142,5 +224,30 @@ if __name__ == '__main__':
         ocr.parse()
         return ocr
     ocr = main()
-    rtxt, stxt, im = ocr.ocr_text(range(1801, 1821, 2))
+    def init_guesser():
+        gsr = c_map_guesser()
+        gsr.innate({
+            0x2c: ',',
+            0x2e: '.',
+            0x21: '!',
+            0x3f: '?',
+            0x95: '「',
+            0x96: '」',
+            0x92: ' ',
+            **{i: chr(i) for i in range(0x30, 0x3a)},
+        })
+        norm = {
+            '，': ',',
+            '。': '.',
+            '？': '?',
+            '！': '!',
+        }
+        trim = [' ']
+        for i in range(1800, 1900, 20):
+            stxt = ocr.pick_text(range(i + 1, i + 21, 2))
+            rtxt = ocr.ocr_chars(stxt)
+            gsr.feed(stxt, rtxt, i, norm, trim)
+        return gsr
+    gsr = init_guesser()
+    im = ocr.draw_chars([k for k in gsr.det][:50])
     
