@@ -80,11 +80,6 @@ class c_map_guesser:
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
-    def _guess_match_blk(self, b1, i1, b2, i2, cmt):
-        print('guess block', cmt)
-        print(' '.join(hex(c)[2:] for c in b1))
-        print(''.join(b2))
-
     def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
         trim1 = set()
         trim2 = set()
@@ -94,7 +89,7 @@ class c_map_guesser:
                 trim2.add(t)
         s1 = self._norm_text(s1, {}, trim1)
         s2 = self._norm_text(s2, norm_r, trim2)
-        print('feed', cmt, ''.join(s2))
+        #print('feed', cmt, ''.join(s2))
         #print(' '.join(hex(c)[2:] for c in s1))
         l1 = len(s1)
         l2 = len(s2)
@@ -102,21 +97,22 @@ class c_map_guesser:
         i2 = 0
         sk1 = []
         sk2 = []
+        def _guess_skip():
+            _lsk1 = len(sk1)
+            _lsk2 = len(sk2)
+            _i1 = i1 - _lsk1
+            _i2 = i2 - _lsk2
+            for _ in range(min(_lsk1, _lsk2)):
+                _c1 = s1[_i1]
+                _c2 = s2[_i2]
+                self._guess_match(_c1, _i1, _c2, _i2, cmt)
+                _i1 += 1
+                _i2 += 1
         lst_matched = True
         while i1 < l1 and i2 < l2:
-            if lst_matched and sk1 and sk2:
-                _lsk1 = len(sk1)
-                _lsk2 = len(sk2)
-                _i1 = i1 - _lsk1
-                _i2 = i2 - _lsk2
-                for _ in range(min(_lsk1, _lsk2)):
-                    _c1 = s1[_i1]
-                    _c2 = s2[_i2]
-                    self._guess_match(_c1, _i1, _c2, _i2, cmt)
-                    _i1 += 1
-                    _i2 += 1
-##                self._guess_match_blk(
-##                    sk1, i1 - len(sk1), sk2, i2 - len(sk2), cmt)
+            if lst_matched:
+                if sk1 and sk2:
+                    _guess_skip()
                 sk1 = []
                 sk2 = []
             c1 = s1[i1]
@@ -187,13 +183,18 @@ class c_map_guesser:
                 lst_matched = False
                 continue
             # both c1 c2 unknown
-##            sk1.append(c1)
-##            #print('sk2+3', c2)
-##            sk2.append(c2)
-##            lst_matched = False
             self._guess_match(c1, i1, c2, i2, cmt)
+            lst_matched = True
             i1 += 1
             i2 += 1
+        if i1 < l1:
+            sk1.extend(s1[i1:])
+            i1 = l1
+        if i2 < l2:
+            sk2.extend(s2[i2:])
+            i2 = l2
+        if sk1 and sk2:
+            _guess_skip()
 
 class c_ff5a_ocr_parser:
 
@@ -270,6 +271,7 @@ if __name__ == '__main__':
         #for i in range(1800, 1820, 20):
         for i in range(1800, 1900, 20):
             stxt = ocr.pick_text(range(i + 1, i + 21, 2), trim_rng)
+            stxt.extend([0x200, 0x201, 0x202])
             rtxt = ocr.ocr_chars(stxt)
             gsr.feed(stxt, rtxt, i, norm, trim)
         return gsr
