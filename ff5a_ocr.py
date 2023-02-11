@@ -23,8 +23,8 @@ def report(*args):
 
 class c_map_guesser:
 
-    MAX_LA_WARN = 3
-    MAX_LA_SKIP = 6
+    MAX_LA_WARN = 2
+    MAX_LA_SKIP = 3
 
     def __init__(self):
         self.det = {}
@@ -57,6 +57,7 @@ class c_map_guesser:
         cc_info[c2] = (cmt, i1, i2)
 
     def _guess_match(self, c1, i1, c2, i2, cmt):
+        #print('guess', c1, i1, c2, i2, cmt)
         if c1 in self.det:
             if c2 == self.det[c1]:
                 return
@@ -213,6 +214,7 @@ class c_ff5a_ocr_parser:
             0x96: '」',
             0x91: '…',
             0x92: ' ',
+            0x93: '、',
             **{i: chr(i) for i in range(0x30, 0x3a)},
         })
         self.gsr_norm = {
@@ -221,8 +223,8 @@ class c_ff5a_ocr_parser:
             '？': '?',
             '！': '!',
         }
-        self.gsr_trim = [' ', '…']
-        self.txt_trim_rng = [(0x99, 0x13b)]
+        self.gsr_trim = [' ']
+        self.txt_trim_rng = [(0x99, 0x13b), (0x91, 0x92)]
 
     def draw_chars(self, chars, pad = 3):
         blk = self.tpsr.draw_chars(chars, pad_col = pad)
@@ -260,11 +262,21 @@ class c_ff5a_ocr_parser:
             tidx += 2
         return txt, tidx
 
-    def feed_text(self, tidx, tlen_min):
+    def draw_text(self, tidx, tlen_min):
         stxt, ntidx = self.pick_text(tidx, tlen_min)
-        rtxt = self.ocr_chars(stxt)
+        return self.draw_chars(stxt)
+
+    def feed_text(self, tidx, tlen_min, detail = False):
+        stxt, ntidx = self.pick_text(tidx, tlen_min)
+        if detail:
+            rtxt, im = self.ocr_chars(stxt, True)
+        else:
+            rtxt = self.ocr_chars(stxt)
         self.gsr.feed(stxt, rtxt, (tidx, ntidx), self.gsr_norm, self.gsr_trim)
-        return ntidx
+        if detail:
+            return ntidx, rtxt, im
+        else:
+            return ntidx
 
     def feed_all(self, tlen_min = 200):
         tidx = 0
@@ -295,36 +307,39 @@ if __name__ == '__main__':
         ocr.parse()
         return ocr
     ocr = main()
-    def init_guesser():
-        gsr = c_map_guesser()
-        gsr.innate({
-            0x2c: ',',
-            0x2e: '.',
-            0x21: '!',
-            0x3f: '?',
-            0x95: '「',
-            0x96: '」',
-            0x91: '…',
-            0x92: ' ',
-            **{i: chr(i) for i in range(0x30, 0x3a)},
-        })
-        norm = {
-            '，': ',',
-            '。': '.',
-            '？': '?',
-            '！': '!',
-        }
-        trim = [' ', '…']
-        trim_rng = [(0x99, 0x13b)]
-        #for i in range(1800, 1820, 20):
-        for i in range(1800, 1900, 20):
-            stxt = ocr.pick_text(range(i + 1, i + 21, 2), trim_rng)
-            stxt.extend([0x200, 0x201, 0x202])
-            rtxt = ocr.ocr_chars(stxt)
-            gsr.feed(stxt, rtxt, i, norm, trim)
-        return gsr
+##    def init_guesser():
+##        gsr = c_map_guesser()
+##        gsr.innate({
+##            0x2c: ',',
+##            0x2e: '.',
+##            0x21: '!',
+##            0x3f: '?',
+##            0x95: '「',
+##            0x96: '」',
+##            0x91: '…',
+##            0x92: ' ',
+##            **{i: chr(i) for i in range(0x30, 0x3a)},
+##        })
+##        norm = {
+##            '，': ',',
+##            '。': '.',
+##            '？': '?',
+##            '！': '!',
+##        }
+##        trim = [' ', '…']
+##        trim_rng = [(0x99, 0x13b)]
+##        #for i in range(1800, 1820, 20):
+##        for i in range(1800, 1900, 20):
+##            stxt = ocr.pick_text(range(i + 1, i + 21, 2), trim_rng)
+##            stxt.extend([0x200, 0x201, 0x202])
+##            rtxt = ocr.ocr_chars(stxt)
+##            gsr.feed(stxt, rtxt, i, norm, trim)
+##        return gsr
     #gsr = init_guesser()
     #print(''.join([*gsr.det.values()][15:50]))
     #im = ocr.draw_chars([k for k in gsr.det][15:50])
     #ocr.feed_all()
-    
+    #ni, r1, im1 = ocr.feed_text(539, 200, True)
+    #print(r1)
+    ni, r2, im2 = ocr.feed_text(993, 200, True)
+    print(r2)
