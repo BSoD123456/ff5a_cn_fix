@@ -23,8 +23,8 @@ def report(*args):
 
 class c_map_guesser:
 
-    MAX_LA_WARN = 2
-    MAX_LA_SKIP = 3
+    MAX_LA_WARN = 3
+    MAX_LA_SKIP = 6
 
     def __init__(self):
         self.det = {}
@@ -81,7 +81,7 @@ class c_map_guesser:
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
-    def _guess_match(self, s1, ed1, s2, ed2, cmt):
+    def _guess_match_blk(self, s1, ed1, s2, ed2, cmt):
         l1 = len(s1)
         l2 = len(s2)
         i1 = ed1 - l1 - 1
@@ -148,15 +148,23 @@ class c_map_guesser:
                         break
                     _sk2.append(_c2)
                 if _i2dlt > 0:
-                    if _i2dlt >= self.MAX_LA_WARN:
-                        report('warning',
-                            f's1 lookahead too mush {i2}+{_i2dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP} at {cmt}')
-                    i1 += 1
-                    i2 += _i2dlt + 1
-                    #print('sk2+1', ''.join(_sk2))
-                    sk2.extend(_sk2)
-                    lst_matched = True
-                    continue
+                    for _i1 in range(i1 + 1, min(l1, i1 + _i2dlt * 2)):
+                        _c1 = s1[_i1]
+                        if _c1 == c1:
+                            # dumplicate match, skip self
+                            report('warning',
+                                f's1 look ahead across a dumplicate char {i1}~{_i1}/{i1+_i2dlt}')
+                            break
+                    else:
+                        if _i2dlt >= self.MAX_LA_WARN:
+                            report('warning',
+                                f's2 lookahead too mush {i2}+{_i2dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP} at {cmt}')
+                        i1 += 1
+                        i2 += _i2dlt + 1
+                        #print('sk2+1', ''.join(_sk2))
+                        sk2.extend(_sk2)
+                        lst_matched = True
+                        continue
                 # no matched char found, skip c1
                 #print('sk1+2')
                 sk1.append(c1)
@@ -178,15 +186,23 @@ class c_map_guesser:
                         break
                     _sk1.append(_c1)
                 if _i1dlt > 0:
-                    if _i1dlt >= self.MAX_LA_WARN:
-                        report('warning',
-                            f's2 lookahead too mush {i1}+{_i1dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP}')
-                    i2 += 1
-                    i1 += _i1dlt + 1
-                    #print('sk1+1')
-                    sk1.extend(_sk1)
-                    lst_matched = True
-                    continue
+                    for _i2 in range(i2 + 1, min(l2, i2 + _i1dlt * 2)):
+                        _c2 = s2[_i2]
+                        if _c2 == c2:
+                            # dumplicate match, skip self
+                            report('warning',
+                                f's2 look ahead across a dumplicate char {i2}~{_i2}/{i2+_i1dlt}')
+                            break
+                    else:
+                        if _i1dlt >= self.MAX_LA_WARN:
+                            report('warning',
+                                f's2 lookahead too mush {i1}+{_i1dlt}/{self.MAX_LA_WARN}~{self.MAX_LA_SKIP}')
+                        i2 += 1
+                        i1 += _i1dlt + 1
+                        #print('sk1+1')
+                        sk1.extend(_sk1)
+                        lst_matched = True
+                        continue
                 # no matched char found, skip c2
                 #print('sk2+2', c2)
                 sk2.append(c2)
