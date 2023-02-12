@@ -21,6 +21,52 @@ def report(*args):
     print(r)
     return r
 
+class c_map_blk:
+
+    def __init__(self, s1, i1, s2, i2, cmt):
+        self.ss = (s1, s2)
+        self.idx = [i1, i2]
+        self.len = [len(s1), len(s2)]
+        self.shft = self.len[1] - self.len[0]
+        self.cmt = cmt
+
+    def _rvs_info(self, rvs):
+        if rvs:
+            return 1, 0, -self.shft
+        else:
+            return 0, 1, self.shft
+
+    @staticmethod
+    def _get_slc(s, i, shft):
+        if shft < 0:
+            i1 = max(0, i + shft)
+            i2 = min(len(s), i)
+        else:
+            i1 = max(0, i)
+            i2 = min(len(s), i + shft)
+        return s[i1:i2]
+
+    def get_src(self, rvs):
+        sidx, saidx, shft = self._rvs_info(rvs)
+        return self.ss[sidx]
+
+    def get_len(self, rvs):
+        sidx, saidx, shft = self._rvs_info(rvs)
+        return self.len[sidx]
+
+    def get_map(self, dc, rvs):
+        sidx, saidx, shft = self._rvs_info(rvs)
+        s = self.ss[sidx]
+        sa = self.ss[saidx]
+        for i, c in enumerate(s):
+            if c != dc:
+                continue
+            return self._get_slc(sa, i, shft)
+        return None
+
+    def _purge_with_blk_and_char(self, dblk, dc, rvs):
+        pass
+
 class c_map_guesser:
 
     MAX_LA_WARN = 3
@@ -31,6 +77,8 @@ class c_map_guesser:
         self.det_r = {}
         self.nondet = {}
         self.cnflct = {}
+        self.mapblk = {}
+        self.mapblk_r = {}
 
     def innate(self, knowledge):
         for c1, c2 in knowledge.items():
@@ -81,13 +129,46 @@ class c_map_guesser:
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
+    def _chk_in_blk(self, tb, rvs):
+        if rvs:
+            mbt = self.mapblk_r
+        else:
+            mbt = self.mapblk
+        s = tb.get_src(rvs)
+        l = tb.get_len(rvs)
+        for i in range(l):
+            c = s[i]
+            if c in mbt:
+                dbs = mbt[c]
+                for db in dbs:
+                    cr = db.get_map(c, rvs)
+                    tcr = tb.get_map(c, rvs)
+        
+
+    def _feed_blk(self, s1, i1, s2, i2, cmt):
+        tblk = c_map_blk(s1, i1, s2, i2, cmt)
+        for i1 in range(tblk.len[0]):
+            c1 = s1[i1]
+            if c1 in self.mapblk:
+                dblks = self.mapblk[c1]
+                for dblk in dblks:
+                    c1r = dblk.get_map(c1, False)
+                    tc1r = tblk.get_map(c1, False)
+
     def _guess_match_blk(self, s1, ed1, s2, ed2, cmt):
         l1 = len(s1)
         l2 = len(s2)
         i1 = ed1 - l1 - 1
         i2 = ed2 - l2 - 1
-        shft = l2 - l1
-        # TODO HERE
+        if l1 == l2:
+            # as 1-1 map
+            for i in range(l1):
+                c1 = s1[i]
+                c2 = s2[i]
+                self._guess_match(c1, i1+i, c2, i2+i, cmt)
+            return
+        # as block
+        self._feed_blk(s1, i1, l1, s2, i2, l2, cmt)
 
     def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
         trim1 = set()
@@ -121,7 +202,7 @@ class c_map_guesser:
         while i1 < l1 and i2 < l2:
             if lst_matched:
                 if sk1 and sk2:
-                    print('!!', sk1, ''.join(sk2))
+                    print(f'guess skip {len(sk1)}/{len(sk2)}', sk1, ''.join(sk2))
                     #_guess_skip()
                     self._guess_match_blk(sk1, i1, sk2, i2, cmt)
                 sk1 = []
