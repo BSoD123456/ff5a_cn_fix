@@ -57,7 +57,7 @@ class c_map_guesser:
         cc_info[c2] = (cmt, i1, i2)
 
     def _guess_match(self, c1, i1, c2, i2, cmt):
-        #print('guess', c1, i1, c2, i2, cmt)
+        print('guess', c1, i1, c2, i2, cmt)
         if c1 in self.det:
             if c2 == self.det[c1]:
                 return
@@ -81,6 +81,14 @@ class c_map_guesser:
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
+    def _guess_match(self, s1, ed1, s2, ed2, cmt):
+        l1 = len(s1)
+        l2 = len(s2)
+        i1 = ed1 - l1 - 1
+        i2 = ed2 - l2 - 1
+        shft = l2 - l1
+        # TODO HERE
+
     def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
         trim1 = set()
         trim2 = set()
@@ -101,8 +109,8 @@ class c_map_guesser:
         def _guess_skip():
             _lsk1 = len(sk1)
             _lsk2 = len(sk2)
-            _i1 = i1 - _lsk1
-            _i2 = i2 - _lsk2
+            _i1 = i1 - _lsk1 - 1
+            _i2 = i2 - _lsk2 - 1
             for _ in range(min(_lsk1, _lsk2)):
                 _c1 = s1[_i1]
                 _c2 = s2[_i2]
@@ -113,7 +121,9 @@ class c_map_guesser:
         while i1 < l1 and i2 < l2:
             if lst_matched:
                 if sk1 and sk2:
-                    _guess_skip()
+                    print('!!', sk1, ''.join(sk2))
+                    #_guess_skip()
+                    self._guess_match_blk(sk1, i1, sk2, i2, cmt)
                 sk1 = []
                 sk2 = []
             c1 = s1[i1]
@@ -125,7 +135,7 @@ class c_map_guesser:
                     # matched, bypass
                     i1 += 1
                     i2 += 1
-                    #print('matched', c2)
+                    print('matched', c1, i1, c2, i2)
                     lst_matched = True
                     continue
                 # find matched char in s2 next
@@ -184,8 +194,11 @@ class c_map_guesser:
                 lst_matched = False
                 continue
             # both c1 c2 unknown
-            self._guess_match(c1, i1, c2, i2, cmt)
-            lst_matched = True
+            #self._guess_match(c1, i1, c2, i2, cmt)
+            #lst_matched = True
+            sk1.append(c1)
+            sk2.append(c2)
+            lst_matched = False
             i1 += 1
             i2 += 1
         if i1 < l1:
