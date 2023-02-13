@@ -30,6 +30,14 @@ class c_map_blk:
         self.shft = self.len[1] - self.len[0]
         self.cmt = cmt
 
+    @property
+    def valid(self):
+        return all(self.len)
+
+    @property
+    def determine(self):
+        return self.shft == 0
+
     def _rvs_info(self, rvs):
         if rvs:
             return 1, 0, -self.shft
@@ -63,6 +71,19 @@ class c_map_blk:
                 continue
             return self._get_slc(sa, i, shft)
         return None
+
+    def split_by(self, c1, c2):
+        s1, s2 = self.ss
+        i1, i2 = self.idx
+        cmt = self.cmt
+        try:
+            ci1 = s1[0].index(c1)
+            ci2 = s2[1].index(c2)
+        except ValueError:
+            return None, None
+        b1 = c_map_blk(s1[:ci1], i1, s2[:ci2], i2, cmt)
+        b2 = c_map_blk(s1[ci1 + 1:], i1 + ci1 + 1, s2[ci2 + 1:], i2 + ci2 + 1, cmt)
+        return b1, b2
 
     def _purge_with_blk_and_char(self, dblk, dc, rvs):
         pass
