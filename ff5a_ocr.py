@@ -25,6 +25,10 @@ class c_map_blk:
 
     def __init__(self, s1, i1, s2, i2, cmt):
         self.ss = (s1, s2)
+        s1i = {c:i for i, c in enumerate(s1)}
+        s2i = {c:i for i, c in enumerate(s2)}
+        self.ssi = (s1i, s2i)
+        self.ssis = (set(s1i), set(s2i))
         self.idx = [i1, i2]
         self.len = [len(s1), len(s2)]
         self.shft = self.len[1] - self.len[0]
@@ -64,28 +68,25 @@ class c_map_blk:
 
     def get_map(self, dc, rvs):
         sidx, saidx, shft = self._rvs_info(rvs)
-        s = self.ss[sidx]
-        sa = self.ss[saidx]
-        for i, c in enumerate(s):
-            if c != dc:
-                continue
-            return self._get_slc(sa, i, shft)
+        si = self.ssi[sidx]
+        if c in si:
+            return self._get_slc(self.ss[saidx], si[c], shft)
         return None
 
     def split_by(self, c1, c2):
+        s1i, s2i = self.ssi
+        if not (c in s1i and c2 in s2i):
+            return None, None
+        ci1 = s1i[c1]
+        ci2 = s2i[c2]
         s1, s2 = self.ss
         i1, i2 = self.idx
         cmt = self.cmt
-        try:
-            ci1 = s1[0].index(c1)
-            ci2 = s2[1].index(c2)
-        except ValueError:
-            return None, None
         b1 = c_map_blk(s1[:ci1], i1, s2[:ci2], i2, cmt)
         b2 = c_map_blk(s1[ci1 + 1:], i1 + ci1 + 1, s2[ci2 + 1:], i2 + ci2 + 1, cmt)
         return b1, b2
 
-    def _purge_with_blk_and_char(self, dblk, dc, rvs):
+    def merge_with(sblk, dblk):
         pass
 
 class c_map_guesser:
