@@ -21,15 +21,74 @@ def report(*args):
     print(r)
     return r
 
+class c_hole_idx:
+
+    def __new__(cls, st):
+        if isinstance(st, cls):
+            return st
+        return super().__new__(cls)
+
+    def __init__(self, st):
+        if st is self:
+            return
+        self.base = st
+        self.holes = []
+
+    def src(self, idx):
+        for h in self.holes:
+            if idx >= h:
+                idx += 1
+        return self.base + idx
+
+    def dig(self, idx):
+        hs = self.holes
+        i = 0
+        d = idx
+        for i, h in enumerate(hs):
+            if d < h:
+                break
+            d += 1
+            assert d != h
+        else:
+            i += 1
+        n = c_hole_idx(self.base)
+        n.holes = hs[:i] + [d] + hs[i:]
+        return n
+
+    def cut(self, idx, ret1 = True, ret2 = True):
+        hs = self.holes
+        i = 0
+        d = idx
+        for i, h in enumerate(hs):
+            if d < h:
+                break
+            d += 1
+            assert d != h
+        else:
+            i += 1
+        if ret1:
+            n1 = c_hole_idx(self.base)
+            n1.holes = hs[:i]
+        if ret2:
+            n2 = c_hole_idx(self.base + d)
+            n2.holes = [h - d for h in hs[i:]]
+        if ret1 and ret2:
+            return n1, n2
+        elif ret1:
+            return n1
+        elif ret2:
+            return n2
+
 class c_map_blk:
+
+    MAX_SHIFT = 6
 
     def __init__(self, s1, i1, s2, i2, cmt):
         self.ss = (s1, s2)
         s1i = {c:i for i, c in enumerate(s1)}
         s2i = {c:i for i, c in enumerate(s2)}
         self.ssi = (s1i, s2i)
-        self.ssis = (set(s1i), set(s2i))
-        self.idx = [i1, i2]
+        self.hidx = [c_hole_idx(i1), c_hole_idx(i2)]
         self.len = [len(s1), len(s2)]
         self.shft = self.len[1] - self.len[0]
         self.cmt = cmt
@@ -47,6 +106,10 @@ class c_map_blk:
             return 1, 0, -self.shft
         else:
             return 0, 1, self.shft
+
+    @property
+    def shft_rng(self):
+        return min(0, self.shft), max(0, self.shft)
 
     @staticmethod
     def _get_slc(s, i, shft):
@@ -75,19 +138,35 @@ class c_map_blk:
 
     def split_by(self, c1, c2):
         s1i, s2i = self.ssi
-        if not (c in s1i and c2 in s2i):
-            return None, None
+        s1, s2 = self.ss
+        hi1, hi2 = self.hidx
+        cmt = self.cmt
+        if not (c1 in s1i or c2 in s2i):
+            return ()
+        elif not c1 in s1i:
+            ci2 = s2i[c2]
+            return c_map_blk(
+                s1, hi1,
+                s2[:ci2] + s2[ci2 + 1:], hi2.hole(ci2), cmt),
+        elif not c2 in s2i:
+            ci1 = s1i[c1]
+            return c_map_blk(
+                s1[:ci1] + s1[ci1 + 1:], hi1.hole(ci1),
+                s2, hi2, cmt),
         ci1 = s1i[c1]
         ci2 = s2i[c2]
-        s1, s2 = self.ss
-        i1, i2 = self.idx
-        cmt = self.cmt
-        b1 = c_map_blk(s1[:ci1], i1, s2[:ci2], i2, cmt)
-        b2 = c_map_blk(s1[ci1 + 1:], i1 + ci1 + 1, s2[ci2 + 1:], i2 + ci2 + 1, cmt)
+        srng1, srng2 = self.shft_rng
+        if not srng1 <= ci2 - ci1 < srng2:
+            return c_map_blk(
+                s1[:ci1] + s1[ci1 + 1:],
+                s2[:ci2] + s2[ci2 + 1:], cmt),
+        b1 = c_map_blk(
+            s1[:ci1], hi1.cut(ci1, ret2=False),
+            s2[:ci2], hi2.cut(ci2, ret2=False), cmt)
+        b2 = c_map_blk(
+            s1[ci1 + 1:], hi1.cut(ci1 + 1, ret1=False)
+            s2[ci2 + 1:], hi2.cut(ci2 + 1, ret1=False), cmt)
         return b1, b2
-
-    def merge_with(sblk, dblk):
-        pass
 
 class c_map_guesser:
 
@@ -126,6 +205,21 @@ class c_map_guesser:
             self.cnflct[c1] = cc_info
         cc_info[c2] = (cmt, i1, i2)
 
+    def _ensure_match(self, c1, i1, c2, i2, cmt, chk_cnflct):
+        print('ensure', c1, i1, c2, i2, cmt)
+        if chk_cnflct:
+            if c1 in self.det:
+                if c2 == self.det[c1]:
+                    return
+                self._log_conflict(c1, i1, c2, i2, cmt)
+                return
+            if c2 in self.det_r:
+                assert c1 != self.det_r[c2]
+                self._log_conflict(c1, i1, c2, i2, cmt)
+                return
+        self.det[c1] = c2
+        self.det_r[c2] = c1
+
     def _guess_match(self, c1, i1, c2, i2, cmt):
         print('guess', c1, i1, c2, i2, cmt)
         if c1 in self.det:
@@ -141,15 +235,17 @@ class c_map_guesser:
             self.nondet[c1] = {}
         c1r_info = self.nondet[c1]
         if c2 in c1r_info:
-            self.det[c1] = c2
-            self.det_r[c2] = c1
             del self.nondet[c1]
             for cc2, (ccmt, ci1, ci2) in c1r_info.items():
                 if cc2 == c2:
                     continue
                 self._log_conflict(c1, ci1, cc2, ci2, ccmt)
+            self._ensure_match(c1, i1, c2, i2, cmt, False)
         else:
             c1r_info[c2] = (cmt, i1, i2)
+
+    def _new_mapblk(self, s1, i1, s2, i2, cmt):
+        pass
 
     def _chk_in_blk(self, tb, rvs):
         if rvs:
@@ -438,7 +534,7 @@ if __name__ == '__main__':
         ocr = c_ff5a_ocr_parser(psr.txt_parser['cn'])
         ocr.parse()
         return ocr
-    ocr = main()
+    #ocr = main()
 ##    def init_guesser():
 ##        gsr = c_map_guesser()
 ##        gsr.innate({
@@ -473,5 +569,5 @@ if __name__ == '__main__':
     #ocr.feed_all()
     #ni, r1, im1 = ocr.feed_text(539, 200, True)
     #print(r1)
-    ni, r2, im2 = ocr.feed_text(993, 200, True)
-    print(r2)
+    #ni, r2, im2 = ocr.feed_text(993, 200, True)
+    #print(r2)
