@@ -81,7 +81,7 @@ class c_hole_idx:
 
 class c_map_blk:
 
-    MAX_SHIFT = 6
+    MAX_SHIFT = 3
 
     def __init__(self, s1, i1, s2, i2, cmt):
         self.ss = (s1, s2)
@@ -107,9 +107,11 @@ class c_map_blk:
         else:
             return 0, 1, self.shft
 
-    @property
-    def shft_rng(self):
-        return min(0, self.shft), max(0, self.shft)
+    def shft_rng(self, offs = 0):
+        return (
+            min(0, self.shft + offs, , self.shft - offs),
+            max(0, self.shft + offs, , self.shft - offs),
+        )
 
     @staticmethod
     def _get_slc(s, i, shft):
@@ -142,7 +144,7 @@ class c_map_blk:
         hi1, hi2 = self.hidx
         cmt = self.cmt
         if not (c1 in s1i or c2 in s2i):
-            return ()
+            return self,
         elif not c1 in s1i:
             ci2 = s2i[c2]
             return c_map_blk(
@@ -155,8 +157,9 @@ class c_map_blk:
                 s2, hi2, cmt),
         ci1 = s1i[c1]
         ci2 = s2i[c2]
-        srng1, srng2 = self.shft_rng
+        srng1, srng2 = self.shft_rng(self.MAX_SHIFT)
         if not srng1 <= ci2 - ci1 < srng2:
+            report('warning', f'shifted too much {ci2 - ci1}~{srng1}/{srng2}')
             return c_map_blk(
                 s1[:ci1] + s1[ci1 + 1:],
                 s2[:ci2] + s2[ci2 + 1:], cmt),
@@ -168,6 +171,46 @@ class c_map_blk:
             s2[ci2 + 1:], hi2.cut(ci2 + 1, ret1=False), cmt)
         return b1, b2
 
+    @staticmethod
+    def _trim(blk):
+        det_info = []
+        if not blk.valid:
+            return None, det_info
+        elif not blk.determine:
+            return blk, det_info
+        hi1, hi2 = blk.hidx
+        cmt = blk.cmt
+        for i, (c1, c2) in enumerate(zip(blk.ss[0], blk.ss[1])):
+            det_info.append(
+                (c1, hi1.src(i), c2, hi2.src(2), cmt)
+            )
+        return None, det_info
+
+    def split_bat(self, pairs):
+        rbs = []
+        det_info = []
+        cblk = self
+        for c1, c2 in pairs:
+            sblks = self.split_by(c1, c2)
+            if len(sblks) == 1:
+                cblk = sblks
+            elif len(sblks) == 2:
+                rblk, nblk = sblks
+                rblk, dinfo = self._trim(rblk)
+                if rblk:
+                    rbs.append(rblk)
+                elif dinfo:
+                    det_info.extend(dinfo)
+                cblk = nblk
+            else:
+                assert False
+        cblk, dinfo = self._trim(cblk)
+        if cblk:
+            rbs.append(cblk)
+        elif dinfo:
+            det_info.extend(dinfo)
+        return rbs, det_info
+
 class c_map_guesser:
 
     MAX_LA_WARN = 3
@@ -178,8 +221,7 @@ class c_map_guesser:
         self.det_r = {}
         self.nondet = {}
         self.cnflct = {}
-        self.mapblk = {}
-        self.mapblk_r = {}
+        self.mapblk = []
 
     def innate(self, knowledge):
         for c1, c2 in knowledge.items():
@@ -219,6 +261,16 @@ class c_map_guesser:
                 return
         self.det[c1] = c2
         self.det_r[c2] = c1
+        #_ensure_match_nondet
+        sblks = self.mapblk
+        if sblks:
+            self.mapblk = []
+            detp = [(c1, c2)]
+            for sblk in sblks:
+                self._feed_blk_trim(sblk, detp)
+
+    def _ensure_match_nondet(self, c1, i1, c2, i2, cmt):
+        pass
 
     def _guess_match(self, c1, i1, c2, i2, cmt):
         print('guess', c1, i1, c2, i2, cmt)
@@ -244,48 +296,46 @@ class c_map_guesser:
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
-    def _new_mapblk(self, s1, i1, s2, i2, cmt):
-        pass
-
-    def _chk_in_blk(self, tb, rvs):
-        if rvs:
-            mbt = self.mapblk_r
-        else:
-            mbt = self.mapblk
-        s = tb.get_src(rvs)
-        l = tb.get_len(rvs)
-        for i in range(l):
-            c = s[i]
-            if c in mbt:
-                dbs = mbt[c]
-                for db in dbs:
-                    cr = db.get_map(c, rvs)
-                    tcr = tb.get_map(c, rvs)
-        
-
     def _feed_blk(self, s1, i1, s2, i2, cmt):
-        tblk = c_map_blk(s1, i1, s2, i2, cmt)
-        for i1 in range(tblk.len[0]):
-            c1 = s1[i1]
-            if c1 in self.mapblk:
-                dblks = self.mapblk[c1]
-                for dblk in dblks:
-                    c1r = dblk.get_map(c1, False)
-                    tc1r = tblk.get_map(c1, False)
+        ns1 = []
+        ns2 = []
+        ni1 = c_hole_idx(i1)
+        nih1 = 0
+        ni2 = c_hole_idx(i2)
+        nih2 = 0
+        det_pairs = []
+        for i, c1 in enumerate(s1):
+            if c1 in self.det:
+                c1r = self.det[c1]
+                if c1r in s2:
+                    det_pairs.append((c1, c1r))
+                else:
+                    ni1 = ni1.hole(i - nih1)
+                    nih1 += 1
+                    continue
+            ns1.append(c1)
+        for i, c2 in enumerate(s2):
+            if c2 in self.det_r:
+                assert not self.det[c2] in s1
+                ni2 = ni2.hole(i - nih2)
+                nih2 += 1
+                continue
+            ns2.append(c2)
+        sblk = c_map_blk(ns1, ni1, ns2, ni2, cmt)
+        self._feed_blk_trim(sblk, det_pairs)
+
+    def _feed_blk_trim(self, blk, det_pairs):
+        rblks, rdet = blk.split_bat(det_pairs)
+        if rblks:
+            self.mapblk.extend(rblks)
+        for dinfo in rdet:
+            self._guess_match(*dinfo)
 
     def _guess_match_blk(self, s1, ed1, s2, ed2, cmt):
         l1 = len(s1)
         l2 = len(s2)
         i1 = ed1 - l1 - 1
         i2 = ed2 - l2 - 1
-        if l1 == l2:
-            # as 1-1 map
-            for i in range(l1):
-                c1 = s1[i]
-                c2 = s2[i]
-                self._guess_match(c1, i1+i, c2, i2+i, cmt)
-            return
-        # as block
         self._feed_blk(s1, i1, l1, s2, i2, l2, cmt)
 
     def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
