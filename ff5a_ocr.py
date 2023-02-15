@@ -109,8 +109,8 @@ class c_map_blk:
 
     def shft_rng(self, offs = 0):
         return (
-            min(0, self.shft + offs, , self.shft - offs),
-            max(0, self.shft + offs, , self.shft - offs),
+            min(0, self.shft + offs, self.shft - offs),
+            max(0, self.shft + offs, self.shft - offs),
         )
 
     @staticmethod
@@ -149,11 +149,11 @@ class c_map_blk:
             ci2 = s2i[c2]
             return c_map_blk(
                 s1, hi1,
-                s2[:ci2] + s2[ci2 + 1:], hi2.hole(ci2), cmt),
+                s2[:ci2] + s2[ci2 + 1:], hi2.dig(ci2), cmt),
         elif not c2 in s2i:
             ci1 = s1i[c1]
             return c_map_blk(
-                s1[:ci1] + s1[ci1 + 1:], hi1.hole(ci1),
+                s1[:ci1] + s1[ci1 + 1:], hi1.dig(ci1),
                 s2, hi2, cmt),
         ci1 = s1i[c1]
         ci2 = s2i[c2]
@@ -167,7 +167,7 @@ class c_map_blk:
             s1[:ci1], hi1.cut(ci1, ret2=False),
             s2[:ci2], hi2.cut(ci2, ret2=False), cmt)
         b2 = c_map_blk(
-            s1[ci1 + 1:], hi1.cut(ci1 + 1, ret1=False)
+            s1[ci1 + 1:], hi1.cut(ci1 + 1, ret1=False),
             s2[ci2 + 1:], hi2.cut(ci2 + 1, ret1=False), cmt)
         return b1, b2
 
@@ -193,7 +193,7 @@ class c_map_blk:
         for c1, c2 in pairs:
             sblks = self.split_by(c1, c2)
             if len(sblks) == 1:
-                cblk = sblks
+                cblk, = sblks
             elif len(sblks) == 2:
                 rblk, nblk = sblks
                 rblk, dinfo = self._trim(rblk)
@@ -261,7 +261,6 @@ class c_map_guesser:
                 return
         self.det[c1] = c2
         self.det_r[c2] = c1
-        #_ensure_match_nondet
         sblks = self.mapblk
         if sblks:
             self.mapblk = []
@@ -270,7 +269,26 @@ class c_map_guesser:
                 self._feed_blk_trim(sblk, detp)
 
     def _ensure_match_nondet(self, c1, i1, c2, i2, cmt):
-        pass
+        c1r_info = self.nondet[c1]
+        del self.nondet[c1]
+        for cc2, (ccmt, ci1, ci2) in c1r_info.items():
+            if cc2 == c2:
+                continue
+            self._log_conflict(c1, ci1, cc2, ci2, ccmt)
+            _ac1_del = []
+            for ac1, ac1r_info in self.nondet.items():
+                if cc2 in ac1r_info:
+                    ccmt, ci1, ci2 = ac1r_info[cc2]
+                    self._log_conflict(ac1, ci1, cc2, ci2, ccmt)
+                    del ac1r_info[cc2]
+                if len(ac1r_info) == 1:
+                    for cc1, (ccmt, ci1, ci2) in ac1r_info:
+                        self._ensure_match(cc1, ci1, cc2, ci2, cmt, True)
+                    ac1r_info = None
+                if not ac1r_info:
+                    _ac1_del.append(ac1)
+            for ac1 in _ac1_del:
+                del self.nondet[ac1]
 
     def _guess_match(self, c1, i1, c2, i2, cmt):
         print('guess', c1, i1, c2, i2, cmt)
@@ -287,12 +305,8 @@ class c_map_guesser:
             self.nondet[c1] = {}
         c1r_info = self.nondet[c1]
         if c2 in c1r_info:
-            del self.nondet[c1]
-            for cc2, (ccmt, ci1, ci2) in c1r_info.items():
-                if cc2 == c2:
-                    continue
-                self._log_conflict(c1, ci1, cc2, ci2, ccmt)
             self._ensure_match(c1, i1, c2, i2, cmt, False)
+            self._ensure_match_nondet(c1, i1, c2, i2, cmt)
         else:
             c1r_info[c2] = (cmt, i1, i2)
 
@@ -310,14 +324,14 @@ class c_map_guesser:
                 if c1r in s2:
                     det_pairs.append((c1, c1r))
                 else:
-                    ni1 = ni1.hole(i - nih1)
+                    ni1 = ni1.dig(i - nih1)
                     nih1 += 1
                     continue
             ns1.append(c1)
         for i, c2 in enumerate(s2):
             if c2 in self.det_r:
-                assert not self.det[c2] in s1
-                ni2 = ni2.hole(i - nih2)
+                assert not self.det_r[c2] in s1
+                ni2 = ni2.dig(i - nih2)
                 nih2 += 1
                 continue
             ns2.append(c2)
@@ -336,7 +350,7 @@ class c_map_guesser:
         l2 = len(s2)
         i1 = ed1 - l1 - 1
         i2 = ed2 - l2 - 1
-        self._feed_blk(s1, i1, l1, s2, i2, l2, cmt)
+        self._feed_blk(s1, i1, s2, i2, cmt)
 
     def feed(self, s1, s2, cmt, norm_r = {}, trim_r = []):
         trim1 = set()
@@ -584,7 +598,7 @@ if __name__ == '__main__':
         ocr = c_ff5a_ocr_parser(psr.txt_parser['cn'])
         ocr.parse()
         return ocr
-    #ocr = main()
+    ocr = main()
 ##    def init_guesser():
 ##        gsr = c_map_guesser()
 ##        gsr.innate({
@@ -619,5 +633,5 @@ if __name__ == '__main__':
     #ocr.feed_all()
     #ni, r1, im1 = ocr.feed_text(539, 200, True)
     #print(r1)
-    #ni, r2, im2 = ocr.feed_text(993, 200, True)
-    #print(r2)
+    ni, r2, im2 = ocr.feed_text(993, 200, True)
+    print(r2)
