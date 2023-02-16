@@ -161,8 +161,8 @@ class c_map_blk:
         if not srng1 <= ci2 - ci1 < srng2:
             report('warning', f'shifted too much {ci2 - ci1}~{srng1}/{srng2}')
             return c_map_blk(
-                s1[:ci1] + s1[ci1 + 1:],
-                s2[:ci2] + s2[ci2 + 1:], cmt),
+                s1[:ci1] + s1[ci1 + 1:], hi1.dig(ci1),
+                s2[:ci2] + s2[ci2 + 1:], hi2.dig(ci2), cmt),
         b1 = c_map_blk(
             s1[:ci1], hi1.cut(ci1, ret2=False),
             s2[:ci2], hi2.cut(ci2, ret2=False), cmt)
@@ -248,7 +248,7 @@ class c_map_guesser:
         cc_info[c2] = (cmt, i1, i2)
 
     def _ensure_match(self, c1, i1, c2, i2, cmt, chk_cnflct):
-        print('ensure', c1, i1, c2, i2, cmt)
+        #print('ensure', c1, i1, c2, i2, cmt)
         if chk_cnflct:
             if c1 in self.det:
                 if c2 == self.det[c1]:
@@ -276,22 +276,25 @@ class c_map_guesser:
                 continue
             self._log_conflict(c1, ci1, cc2, ci2, ccmt)
             _ac1_del = []
+            _ac1_ensure = []
             for ac1, ac1r_info in self.nondet.items():
                 if cc2 in ac1r_info:
                     ccmt, ci1, ci2 = ac1r_info[cc2]
                     self._log_conflict(ac1, ci1, cc2, ci2, ccmt)
                     del ac1r_info[cc2]
                 if len(ac1r_info) == 1:
-                    for cc1, (ccmt, ci1, ci2) in ac1r_info:
-                        self._ensure_match(cc1, ci1, cc2, ci2, cmt, True)
+                    for ac1r, (ccmt, ci1, ci2) in ac1r_info.items():
+                        _ac1_ensure.append((ac1, ci1, ac1r, ci2, ccmt))
                     ac1r_info = None
                 if not ac1r_info:
                     _ac1_del.append(ac1)
             for ac1 in _ac1_del:
                 del self.nondet[ac1]
+            for args in _ac1_ensure:
+                self._ensure_match(*args, True)
 
     def _guess_match(self, c1, i1, c2, i2, cmt):
-        print('guess', c1, i1, c2, i2, cmt)
+        #print('guess', c1, i1, c2, i2, cmt)
         if c1 in self.det:
             if c2 == self.det[c1]:
                 return
@@ -318,11 +321,13 @@ class c_map_guesser:
         ni2 = c_hole_idx(i2)
         nih2 = 0
         det_pairs = []
+        det_r = set()
         for i, c1 in enumerate(s1):
             if c1 in self.det:
                 c1r = self.det[c1]
                 if c1r in s2:
                     det_pairs.append((c1, c1r))
+                    det_r.add(c1r)
                 else:
                     ni1 = ni1.dig(i - nih1)
                     nih1 += 1
@@ -330,10 +335,11 @@ class c_map_guesser:
             ns1.append(c1)
         for i, c2 in enumerate(s2):
             if c2 in self.det_r:
-                assert not self.det_r[c2] in s1
-                ni2 = ni2.dig(i - nih2)
-                nih2 += 1
-                continue
+                if not c2 in det_r:
+                    assert not self.det_r[c2] in ns1
+                    ni2 = ni2.dig(i - nih2)
+                    nih2 += 1
+                    continue
             ns2.append(c2)
         sblk = c_map_blk(ns1, ni1, ns2, ni2, cmt)
         self._feed_blk_trim(sblk, det_pairs)
@@ -384,7 +390,7 @@ class c_map_guesser:
         while i1 < l1 and i2 < l2:
             if lst_matched:
                 if sk1 and sk2:
-                    print(f'guess skip {len(sk1)}/{len(sk2)}', sk1, ''.join(sk2))
+                    #print(f'guess skip {len(sk1)}/{len(sk2)}', sk1, ''.join(sk2))
                     #_guess_skip()
                     self._guess_match_blk(sk1, i1, sk2, i2, cmt)
                 sk1 = []
@@ -398,7 +404,7 @@ class c_map_guesser:
                     # matched, bypass
                     i1 += 1
                     i2 += 1
-                    print('matched', c1, i1, c2, i2)
+                    #print('matched', c1, i1, c2, i2)
                     lst_matched = True
                     continue
                 # find matched char in s2 next
@@ -507,7 +513,15 @@ class c_ff5a_ocr_parser:
             0x91: '…',
             0x92: ' ',
             0x93: '、',
-            **{i: chr(i) for i in range(0x30, 0x3a)},
+            **{i: chr(i) for i in range(ord('0'), ord('9')+1)},
+            **{i: chr(i) for i in range(ord('a'), ord('z')+1)},
+            **{i: chr(i) for i in range(ord('A'), ord('Z')+1)},
+            # Ambiguous
+            696: '啊',
+            1525: '看',
+            1530: '看',
+            1512: '监',
+            1847: '觉',
         })
         self.gsr_norm = {
             '，': ',',
@@ -580,9 +594,25 @@ class c_ff5a_ocr_parser:
     def get_conflict(self):
         r = {}
         for c1, rinfo in self.gsr.cnflct.items():
-           s = [self.gsr.det[c1], *rinfo.keys()]
-           r[c1] = ''.join(s)
+            if c1 in  self.gsr.det:
+                s = [self.gsr.det[c1], *rinfo.keys()]
+                r[c1] = ''.join(s)
+            else:
+                for c2 in rinfo:
+                    assert c2 in self.gsr.det_r
+                    if not c2 in r:
+                        r[c2] = [self.gsr.det_r[c2]]
+                    r[c2].append(c1)
         return r
+
+    def draw_conflict(self):
+        r = []
+        for c, v in self.get_conflict().items():
+            if isinstance(c, int):
+                r.append(c)
+            else:
+                r.extend(v)
+        return self.draw_chars(r)
 
 if __name__ == '__main__':
 
@@ -633,5 +663,8 @@ if __name__ == '__main__':
     #ocr.feed_all()
     #ni, r1, im1 = ocr.feed_text(539, 200, True)
     #print(r1)
-    ni, r2, im2 = ocr.feed_text(993, 200, True)
-    print(r2)
+    #ni, r2, im2 = ocr.feed_text(993, 200, True)
+    #print(r2)
+    #ni, r, im = ocr.feed_text(577, 200, True)
+    #print(r)
+    ocr.feed_all()
