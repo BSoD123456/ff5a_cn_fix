@@ -225,7 +225,11 @@ class c_map_guesser:
 
     def innate(self, knowledge):
         for c1, c2 in knowledge.items():
+            if c1 in self.det:
+                report('warning', f'dumped innate char {c1}')
             self.det[c1] = c2
+            if c2 in self.det_r:
+                report('warning', f'dumped innate char {c2}')
             self.det_r[c2] = c1
 
     def _norm_text(self, s, norm, trim):
@@ -245,7 +249,9 @@ class c_map_guesser:
         else:
             cc_info = {}
             self.cnflct[c1] = cc_info
-        cc_info[c2] = (cmt, i1, i2)
+        if not c2 in cc_info:
+            cc_info[c2] = []
+        cc_info[c2].append((cmt, i1, i2))
 
     def _ensure_match(self, c1, i1, c2, i2, cmt, chk_cnflct):
         #print('ensure', c1, i1, c2, i2, cmt)
@@ -259,7 +265,9 @@ class c_map_guesser:
                 assert c1 != self.det_r[c2]
                 self._log_conflict(c1, i1, c2, i2, cmt)
                 return
+        assert not c1 in self.det
         self.det[c1] = c2
+        assert not c2 in self.det_r
         self.det_r[c2] = c1
         sblks = self.mapblk
         if sblks:
@@ -517,11 +525,17 @@ class c_ff5a_ocr_parser:
             **{i: chr(i) for i in range(ord('a'), ord('z')+1)},
             **{i: chr(i) for i in range(ord('A'), ord('Z')+1)},
             # Ambiguous
+            660: '呵',
             696: '啊',
+            2063: '阿',
             1525: '看',
-            1530: '看',
+            1530: '着',
             1512: '监',
             1847: '觉',
+            771: '墓',
+            762: '基',
+            708: '喷',
+            701: '啵',
         })
         self.gsr_norm = {
             '，': ',',
