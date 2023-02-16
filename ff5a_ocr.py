@@ -383,23 +383,11 @@ class c_map_guesser:
         i2 = 0
         sk1 = []
         sk2 = []
-        def _guess_skip():
-            _lsk1 = len(sk1)
-            _lsk2 = len(sk2)
-            _i1 = i1 - _lsk1 - 1
-            _i2 = i2 - _lsk2 - 1
-            for _ in range(min(_lsk1, _lsk2)):
-                _c1 = s1[_i1]
-                _c2 = s2[_i2]
-                self._guess_match(_c1, _i1, _c2, _i2, cmt)
-                _i1 += 1
-                _i2 += 1
         lst_matched = True
         while i1 < l1 and i2 < l2:
             if lst_matched:
                 if sk1 and sk2:
                     #print(f'guess skip {len(sk1)}/{len(sk2)}', sk1, ''.join(sk2))
-                    #_guess_skip()
                     self._guess_match_blk(sk1, i1, sk2, i2, cmt)
                 sk1 = []
                 sk2 = []
@@ -425,7 +413,7 @@ class c_map_guesser:
                         break
                     _sk2.append(_c2)
                 if _i2dlt > 0:
-                    for _i1 in range(i1 + 1, min(l1, i1 + _i2dlt * 2)):
+                    for _i1 in range(i1 + 1, min(l1, i1 + _i2dlt * 2 - len(sk1) + len(sk2))):
                         _c1 = s1[_i1]
                         if _c1 == c1:
                             # dumplicate match, skip self
@@ -463,7 +451,7 @@ class c_map_guesser:
                         break
                     _sk1.append(_c1)
                 if _i1dlt > 0:
-                    for _i2 in range(i2 + 1, min(l2, i2 + _i1dlt * 2)):
+                    for _i2 in range(i2 + 1, min(l2, i2 + _i1dlt * 2 - len(sk2) + len(sk1))):
                         _c2 = s2[_i2]
                         if _c2 == c2:
                             # dumplicate match, skip self
@@ -487,8 +475,6 @@ class c_map_guesser:
                 lst_matched = False
                 continue
             # both c1 c2 unknown
-            #self._guess_match(c1, i1, c2, i2, cmt)
-            #lst_matched = True
             sk1.append(c1)
             sk2.append(c2)
             lst_matched = False
@@ -501,7 +487,7 @@ class c_map_guesser:
             sk2.extend(s2[i2:])
             i2 = l2
         if sk1 and sk2:
-            _guess_skip()
+            self._guess_match_blk(sk1, i1, sk2, i2, cmt)
 
 class c_ff5a_ocr_parser:
 
