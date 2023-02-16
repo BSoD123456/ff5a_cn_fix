@@ -67,6 +67,12 @@ class c_ff5a_fixer:
                     report('warning', f'non-determine char {c}({i:x})')
                 return i
 
+    def toloc(self, s):
+        return [self.ord(c) for c in s]
+
+    def tostr(self, s):
+        return ''.join(self.chr(i) for i in s)
+
 if __name__ == '__main__':
 
     from pprint import pprint

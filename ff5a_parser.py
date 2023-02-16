@@ -503,6 +503,32 @@ class c_ff5a_parser_text:
         tpos, tlen = self.text.get_item(idx)
         return self.dec_text(tpos, tlen, idx)
 
+    def find_chars(self, chars, first = True, ret_txt = False):
+        hd = chars[0]
+        slen = len(chars)
+        r = []
+        for idx in range(self.text.cnt_index):
+            txt = self.get_text(idx)
+            for i in range(len(txt) - slen + 1):
+                d = txt[i]
+                if d != hd:
+                    continue
+                for j in range(1, slen):
+                    sc = chars[j]
+                    dc = txt[i + j]
+                    if sc != dc:
+                        break
+                else:
+                    if ret_txt:
+                        r.append((idx, i, txt))
+                    else:
+                        r.append((idx, i))
+                    if first:
+                        return r
+                    else:
+                        break
+        return r
+
     def draw_chars(self, chars, cols = None, pad_col = 3, pad_row = 5):
         if cols is None:
             cols = len(chars)
@@ -638,6 +664,10 @@ class c_ff5a_parser:
             return tpsr.draw.make_img(blk)
         else:
             return blk
+
+    def find_txt_chars(self, name, chars, first = True, ret_txt = False):
+        return self.txt_parser[name].find_chars(chars, first, ret_txt)
+            
 
     def parse(self):
         self.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
