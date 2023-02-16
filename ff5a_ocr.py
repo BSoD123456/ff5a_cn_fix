@@ -525,6 +525,10 @@ class c_ff5a_ocr_parser:
             708: '喷',
             701: '啵',
             # unused, only for charset
+            **self._chartab(0x99, [
+                (0xa4a1, 0xa4ee), 0xa4ef, 0xa4f2, 0xa4f3,
+                (0xa5a1, 0xa5ee), 0xa5ef, (0xa5f2, 0xa5f5), 0xa960
+            ], 'gbk')
         })
         self.gsr_norm = {
             '，': ',',
@@ -533,6 +537,21 @@ class c_ff5a_ocr_parser:
         }
         self.gsr_trim = [' ']
         self.txt_trim_rng = [(0x99, 0x13b), (0x91, 0x92)]
+
+    def _chartab(self, base, seq, enc):
+        r = {}
+        def rec(c):
+            s = hex(c)[2:]
+            if len(s) % 2:
+                s = '0' + s
+            r[len(r) + base] = bytes.fromhex(s).decode(enc)
+        for v in seq:
+            if isinstance(v, tuple):
+                for c in range(*v):
+                    rec(c)
+            else:
+                rec(v)
+        return r
 
     def draw_chars(self, chars, pad = 3):
         blk = self.tpsr.draw_chars(chars, pad_col = pad)
