@@ -513,7 +513,9 @@ class c_ff5a_ocr_parser:
         self.gsr = c_map_guesser()
         self.gsr.innate({
             0x2c: ',',
-            0x2e: '.',
+            0x2e: '。',
+            0x87b: '.',
+            0x25: '%',
             0x21: '!',
             0x3f: '?',
             0x95: '「',
@@ -536,10 +538,10 @@ class c_ff5a_ocr_parser:
             762: '基',
             708: '喷',
             701: '啵',
+            # unused, only for charset
         })
         self.gsr_norm = {
             '，': ',',
-            '。': '.',
             '？': '?',
             '！': '!',
         }
@@ -602,7 +604,7 @@ class c_ff5a_ocr_parser:
         tidx = 0
         tcnt = self.tpsr.text.cnt_index
         while tidx >= 0:
-            report('feed', f'{tidx}/{tcnt}')
+            report('info', f'feed {tidx}/{tcnt}')
             tidx = self.feed_text(tidx, tlen_min)
 
     def get_conflict(self):
@@ -627,6 +629,70 @@ class c_ff5a_ocr_parser:
             else:
                 r.extend(v)
         return self.draw_chars(r)
+
+    def export_charset(self):
+        cdet = self.gsr.det.copy()
+        cdet_r = self.gsr.det_r.copy()
+        nondet = self.gsr.nondet
+        nondet_r = {}
+        nondet_mul_c1 = set()
+        nondet_r_mul_c2 = set()
+        for c1, c1r_info in nondet.items():
+            mul = (len(c1r_info) > 1)
+            if mul:
+                nondet_mul_c1.add(c1)
+            for c2 in c1r_info:
+                if mul:
+                    nondet_r_mul_c2.add(c2)
+                if not c2 in nondet_r:
+                    nondet_r[c2] = set()
+                nondet_r[c2].add(c1)
+        for c2, c2r_info in nondet_r.items():
+            if not len(c2r_info) > 1:
+                continue
+            nondet_r_mul_c2.add(c2)
+            for c1 in c2r_info:
+                nondet_mul_c1.add(c1)
+        cndet = {}
+        cndet_r = {}
+        cndet_mul = {}
+        cndet_r_mul = {}
+        for c1, c1r_info in nondet.items():
+            if c1 in nondet_mul_c1:
+                if not c1 in cndet_mul:
+                    cndet_mul[c1] = []
+                cnm1 = cndet_mul[c1]
+                for c2 in c1r_info:
+                    if not c2 in cnm1:
+                        cnm1.append(c2)
+            else:
+                for c2 in c1r_info:
+                    assert not c1 in cndet
+                    cndet[c1] = c2
+        for c2, c2r_info in nondet_r.items():
+            if c2 in nondet_r_mul_c2:
+                if not c2 in cndet_r_mul:
+                    cndet_r_mul[c2] = []
+                cnm2 = cndet_r_mul[c2]
+                for c1 in c2r_info:
+                    if not c1 in cnm2:
+                        cnm2.append(c1)
+            else:
+                for c1 in c2r_info:
+                    assert not c2 in cndet_r
+                    cndet_r[c2] = c1
+        return (cdet, cndet, cndet_mul), (cdet_r, cndet_r, cndet_r_mul)
+
+    def unknown_chars(self):
+        cs, csr = self.export_charset()
+        tidx = 0
+        uc = set()
+        while tidx >= 0:
+            txt, tidx = self.pick_text(tidx, 200)
+            for c in txt:
+                if not (c in cs[0] or c in cs[1]):
+                    uc.add(c)
+        return sorted(uc)
 
 if __name__ == '__main__':
 
