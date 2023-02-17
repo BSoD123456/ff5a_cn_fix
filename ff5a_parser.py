@@ -672,6 +672,14 @@ class c_ff5a_parser_text:
     def is_ctrl(c):
         return (c & 0xf000) == 0xf000
 
+    def dec_ctrl(self, c):
+        if not self.is_ctrl(c):
+            return 0
+        return (c & 0xfff) - 0x4de
+
+    def enc_ctrl(self, c):
+        return (c + 0x4de) | 0xf000
+
 class c_ff5a_parser_text_jp(c_ff5a_parser_text):
 
     def dec_text(self, tpos, tlen, tidx, mark_ctrl = True):
