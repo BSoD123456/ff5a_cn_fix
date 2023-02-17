@@ -171,6 +171,16 @@ class c_mark:
             s.parent = self
         return s
 
+    def concat(self, dst, pos = None):
+        db = dst.BYTES(0, None)
+        if pos is None:
+            self.mod.extend(db)
+        else:
+            sb = self.BYTES(0, pos)
+            self.extendto(pos + len(db))
+            self.mod[pos:] = db
+        return self
+
 class c_ff5a_sect(c_mark):
 
     _SIGN_PAD = '\0\0\0\0'
@@ -291,6 +301,8 @@ class c_ff5a_sect_rom(c_ff5a_sect):
 
     def __init__(self, raw, offset):
         super().__init__(raw, offset)
+
+    def parse(self):
         self._parse_tabs({
             'text': c_ff5a_sect_text,
             'font': c_ff5a_sect_font,
@@ -313,6 +325,13 @@ class c_ff5a_sect_rom(c_ff5a_sect):
             if tab:
                 tabs[sign] = tab
         self.tabs = tabs
+
+    def repack_with(self, smk, dmk):
+        rmk = self.sub(0, smk.offset, type(self))
+        rmk_tail = self.sub(smk.offset + smk.pos_last)
+        rmk.concat(dmk).concat(rmk_tail)
+        rmk.parse()
+        return rmk
 
 class c_text_drawer:
 
@@ -695,6 +714,7 @@ class c_ff5a_parser:
         with open(self.rom_path, 'rb') as fd:
             raw = fd.read()
         self.rom = c_ff5a_sect_rom(raw, 0)
+        self.rom.parse()
 
     def new_txt_parser(self, name, txt_idx, fnt_idx, cls):
         self.txt_parser[name] = cls(
@@ -735,7 +755,12 @@ class c_ff5a_parser:
 
     def find_txt_chars(self, name, chars, first = True, ret_txt = False):
         return self.txt_parser[name].find_chars(chars, first, ret_txt)
-            
+
+    def repack_txt_with(self, name, rplc):
+        tpsr = self.txt_parser[name]
+        txtmk = tpsr.repack_text(rplc)
+        rmk = self.rom.repack_with(tpsr.text, txtmk)
+        return rmk
 
     def parse(self):
         self.new_txt_parser('jp', 0, 0, c_ff5a_parser_text_jp)
