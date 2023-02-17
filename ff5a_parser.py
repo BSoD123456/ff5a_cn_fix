@@ -241,7 +241,7 @@ class c_ff5a_sect_tab(c_ff5a_sect):
         offs += self.cnt_index * 4
         for i in range(self.cnt_index):
             if i in rplc:
-                raise NotImplementedError
+                dat = rplc[i]
             else:
                 dat = self.get_raw(i)
             rmk_index.W32(offs, i * 4)
@@ -530,9 +530,16 @@ class c_ff5a_parser_text:
             r.append(c)
         return r
 
+    def enc_text(self, txt):
+        return txt
+
     def get_text(self, idx):
         tpos, tlen = self.text.get_item(idx)
         return self.dec_text(tpos, tlen, idx)
+
+    def repack_text(self, rplc):
+        return self.text.repack_with(
+            {i: self.enc_text(t) for i, t in rplc.items()})
 
     def find_chars(self, chars, first = True, ret_txt = False):
         hd = chars[0]
@@ -615,6 +622,9 @@ class c_ff5a_parser_text_jp(c_ff5a_parser_text):
             report('warning', f'something wrong when decode text 0x{tidx:x}')
         return r
 
+    def enc_text(self, txt):
+        raise NotImplementedError
+
 class c_ff5a_parser_text_cn(c_ff5a_parser_text):
 
     def dec_text(self, tpos, tlen, tidx, mark_ctrl = True):
@@ -646,6 +656,33 @@ class c_ff5a_parser_text_cn(c_ff5a_parser_text):
             r.append(c)
         else:
             report('warning', f'something wrong when decode text 0x{tidx:x}')
+        return r
+
+    def enc_text(self, txt):
+        r = []
+        tlen = len(txt)
+        for i, c in enumerate(txt):
+            if c == 0:
+                if not i == tlen - 1:
+                    report('warning', f'EOS at {i}/{tlen-1}')
+                    r.append(c)
+                else:
+                    break
+            elif c < 0xe0:
+                r.append(c)
+            elif c < 0x11e0:
+                c += 0x20
+                r.append((c >> 8) + 0xdf)
+                r.append(c & 0xff)
+            elif 0xf000 <= c < 0x10000:
+                #ctrl sym
+                r.append(c >> 8)
+                r.append(c &0xff)
+            else:
+                report('warning', f'invalid char {c:x}, ignored')
+        else:
+            r.append(0)
+            #report('warning', f'EOS missing, auto filled')
         return r
 
 class c_ff5a_parser:
