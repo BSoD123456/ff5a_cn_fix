@@ -73,6 +73,12 @@ class c_ff5a_fixer:
     def tostr(self, s):
         return ''.join(self.chr(i) for i in s)
 
+    def repack_with(self, rplc):
+        mk = self.psr.repack_txt_with('cn',
+            {i:self.toloc(s) for i, s in rplc.items()})
+        with open(self.paths['rom_out'], 'wb') as fd:
+            fd.write(mk.BYTES(0, None))
+
 if __name__ == '__main__':
 
     from pprint import pprint
@@ -80,6 +86,7 @@ if __name__ == '__main__':
 
     FF5A_PATHS = {
         'rom': 'ff5acn.gba',
+        'rom_out': 'ff5acn_out.gba',
         'charset': 'charset.json',
     }
     fx = c_ff5a_fixer(FF5A_PATHS)

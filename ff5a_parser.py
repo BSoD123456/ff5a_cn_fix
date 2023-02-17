@@ -86,13 +86,23 @@ class c_mark:
 
     def findval(self, val, pos, cnt, signed):
         st = pos
-        ed = len(self.raw) - cnt + 1 - st
+        ed = len(self.raw) - cnt + 1 - self.offset
         for i in range(st, ed, cnt):
             s = self.readval(i, cnt, signed)
             if s == val:
                 return i
         else:
             return -1
+
+    def forval(self, cb, pos, cnt, signed):
+        st = pos
+        ed = len(self.raw) - cnt + 1 - self.offset
+        ln = (ed - st + 1) // 2
+        for i in range(st, ed, cnt):
+            s = self.readval(i, cnt, signed)
+            if cb(i, s, ln) == False:
+                return False
+        return True
 
     I8  = lambda self, pos: self.readval(pos, 1, True)
     U8  = lambda self, pos: self.readval(pos, 1, False)
@@ -116,6 +126,15 @@ class c_mark:
     FU32 = lambda self, val, pos: self.findval(val, pos, 4, False)
     FI64 = lambda self, val, pos: self.findval(val, pos, 8, True)
     FU64 = lambda self, val, pos: self.findval(val, pos, 8, False)
+
+    FORI8 = lambda self, cb, pos: self.forval(cb, pos, 1, True)
+    FORU8 = lambda self, cb, pos: self.forval(cb, pos, 1, False)
+    FORI16 = lambda self, cb, pos: self.forval(cb, pos, 2, True)
+    FORU16 = lambda self, cb, pos: self.forval(cb, pos, 2, False)
+    FORI32 = lambda self, cb, pos: self.forval(cb, pos, 4, True)
+    FORU32 = lambda self, cb, pos: self.forval(cb, pos, 4, False)
+    FORI64 = lambda self, cb, pos: self.forval(cb, pos, 8, True)
+    FORU64 = lambda self, cb, pos: self.forval(cb, pos, 8, False)
 
     def BYTES(self, pos, cnt):
         st = self.offset + pos
@@ -299,6 +318,8 @@ class c_ff5a_sect_font(c_ff5a_sect_tab):
 
 class c_ff5a_sect_rom(c_ff5a_sect):
 
+    BASE_ADDR = 0x8000000
+
     def parse(self):
         self._parse_tabs({
             'text': c_ff5a_sect_text,
@@ -322,6 +343,31 @@ class c_ff5a_sect_rom(c_ff5a_sect):
             if tab:
                 tabs[sign] = tab
         self.tabs = tabs
+        self._parse_entries()
+
+    def _parse_entries(self):
+        entries = {}
+        ent_r = {}
+        min_tab = INF
+        for k, tab in self.tabs.items():
+            ent = []
+            entries[k] = ent
+            for i, mk in enumerate(tab):
+                pos = mk.offset
+                ent_r[pos + self.BASE_ADDR] = (k, i)
+                ent.append([])
+                if pos < min_tab:
+                    min_tab = pos
+        def find(pos, val, cnt):
+            if pos >= min_tab:
+                print('h')
+                return False
+            if val in ent_r:
+                sign, idx = ent_r[val]
+                report('info', f'found entry {sign}[{idx}] at 0x{pos:x}')
+                entries[sign][idx].append(pos)
+        self.FORU32(find, 0)
+        self.entries = entries
 
     def repack_with(self, smk, dmk):
         rmk = self.sub(0, smk.offset, type(self))
