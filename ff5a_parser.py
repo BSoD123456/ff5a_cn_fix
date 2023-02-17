@@ -360,7 +360,6 @@ class c_ff5a_sect_rom(c_ff5a_sect):
                     min_tab = pos
         def find(pos, val, cnt):
             if pos >= min_tab:
-                print('h')
                 return False
             if val in ent_r:
                 sign, idx = ent_r[val]
@@ -369,10 +368,35 @@ class c_ff5a_sect_rom(c_ff5a_sect):
         self.FORU32(find, 0)
         self.entries = entries
 
-    def repack_with(self, smk, dmk):
-        rmk = self.sub(0, smk.offset, type(self))
-        rmk_tail = self.sub(smk.offset + smk.pos_last)
-        rmk.concat(dmk).concat(rmk_tail)
+    def _repack_entries(self, rmk, soffs, doffs):
+        shft = doffs - soffs
+        if shft == 0:
+            return
+        for k, tab in self.tabs.items():
+            for i, mk in enumerate(tab):
+                moffs = mk.offset
+                if mk.offset < soffs:
+                    continue
+                dmoffs = moffs + shft
+                report('info', f'shift tab from 0x{moffs:x} to 0x{dmoffs}')
+                for ent in self.entries[k][i]:
+                    assert rmk.U32(ent) == moffs + self.BASE_ADDR
+                    rmk.W32(dmoffs + self.BASE_ADDR, ent)
+
+    def repack_with(self, smk, dmk,
+            align = 0x10, padding = 0xff):
+        offs = smk.offset
+        slen = alignup(smk.pos_last, align)
+        dlen = alignup(dmk.pos_last, align)
+        padlen = dlen - dmk.pos_last
+        rmk = self.sub(0, offs, type(self))
+        rmk_tail = self.sub(offs + slen)
+        if padlen > 0:
+            rmk_pad = c_mark(bytearray([padding] * padlen), 0)
+            rmk.concat(dmk).concat(rmk_pad).concat(rmk_tail)
+        else:
+            rmk.concat(dmk).concat(rmk_tail)
+        self._repack_entries(rmk, offs + slen, offs + dlen)
         rmk.parse()
         return rmk
 
