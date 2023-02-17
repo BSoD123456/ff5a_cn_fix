@@ -279,6 +279,7 @@ class c_ff5a_sect_tab(c_ff5a_sect):
             offs += len(dat)
         rmk.pos_last = offs
         rmk._repack_head()
+        report('info', f'repack 0x{rmk.pos_last:x} bytes')
         rmk.parse()
         return rmk
 
@@ -294,7 +295,6 @@ class c_ff5a_sect_text(c_ff5a_sect_tab):
 
     def _repack_head(self):
         self.W32(self.pos_last, 0xc)
-        report('info', f'repack 0x{self.pos_last:x} bytes')
 
 class c_ff5a_sect_font(c_ff5a_sect_tab):
 
