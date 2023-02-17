@@ -299,9 +299,6 @@ class c_ff5a_sect_font(c_ff5a_sect_tab):
 
 class c_ff5a_sect_rom(c_ff5a_sect):
 
-    def __init__(self, raw, offset):
-        super().__init__(raw, offset)
-
     def parse(self):
         self._parse_tabs({
             'text': c_ff5a_sect_text,
