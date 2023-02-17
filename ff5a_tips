@@ -57,3 +57,35 @@ it is changed in cn:
     }
     step = 2;
   }
+
+
+
+when change name, read the default name [877aa2b]
+
+807242a bl 8102408(r2:80724c1)->
+8072740 bl 8102404(r1:80738c5)->
+80738c8 bl 8102404(r1:8073845)
+->807386a bl 8102408(r2:8072391)
+  ->807239e bl 8102408(r2:8072325) read text idx = r1 * 2 + cnjp
+    ->807234e bl 8102408(r2:80d24c9) decode char idx
+      ->read at 80d24d8
+      807235c bl 8102408(r2:80722ad) find char tab idx, cn failed here
+      ->8072308 bl 8102408(r2:80d2539)
+        ->read at 80d254c
+
+when reset to default name read [877aa2b]
+
+8072fe4 bl 8102408(r2:8072391)
+->...same as above
+8072ff0 ldrh r0, [r2] ; read char pos by above
+8072ff2 strh r0, [r1] ; set char pos to buf
+
+when reset to default name read [877aa32](cn)
+
+when battle show lina's name read [877a9fa](cn)
+80d03c8 bl 8102410(r4:80d39e9) ; show name, idx = r1 * 2 + cnjp
+->80d3a44 bl 8102410(r4:80d343d) ; set text idx to hndl
+  ->80d3460 bl 810240c(r3:80d2585) ; get text info: offset, step, length... , something changed here, always step 2, and always switch to +1(<- that's wrong!)
+  80d3a60 bl 8102410(r4:80d289d)
+  ->80d28c6 bl 8102408(r2:80d24c9)
+    ->at 80d24d8
