@@ -191,6 +191,7 @@ class c_ff5a_sect_tab(c_ff5a_sect):
         return NotImplemented
 
     def _parse_index(self, pos):
+        self.len_head = pos
         mk = self.sub(pos)
         nxt_pos = mk.U32(0x0)
         self.mk_index = mk
@@ -233,12 +234,38 @@ class c_ff5a_sect_tab(c_ff5a_sect):
             elif pos < dpos:
                 return -1
 
+    def repack_with(self, rplc):
+        rmk = self.sub(0, self.len_head, type(self))
+        offs = self.len_head
+        rmk_index = rmk.sub(offs)
+        offs += self.cnt_index * 4
+        for i in range(self.cnt_index):
+            if i in rplc:
+                raise NotImplementedError
+            else:
+                dat = self.get_raw(i)
+            rmk_index.W32(offs, i * 4)
+            for j, c in enumerate(dat):
+                rmk.W8(c, offs + j)
+            offs += len(dat)
+        rmk.pos_last = offs
+        rmk._repack_head()
+        rmk.parse()
+        return rmk
+
+    def _repack_head(self):
+        return NotImplemented
+
 class c_ff5a_sect_text(c_ff5a_sect_tab):
 
     def _parse_head(self):
         self.pos_last = self.U32(0xc)
         self._parse_index(0x10)
         report('info', f'found {self.cnt_index} texts')
+
+    def _repack_head(self):
+        self.W32(self.pos_last, 0xc)
+        report('info', f'repack {self.pos_last} bytes')
 
 class c_ff5a_sect_font(c_ff5a_sect_tab):
 
@@ -255,6 +282,10 @@ class c_ff5a_sect_font(c_ff5a_sect_tab):
         self.font_pad = font_pad
         self.font_size = sz_font
         report('info', f'found 0x{self.cnt_index:x} chars')
+
+    def _repack_head(self):
+        # nothing to change
+        pass
 
 class c_ff5a_sect_rom(c_ff5a_sect):
 
@@ -817,6 +848,16 @@ class c_ff5a_parser:
     def guess_ctrl_fault(self):
         r1, r2 = self.cmp_ctrl_sym({0xf4e0, 0xf509})
         return sorted((*(i for i, cs in r1), *(i for i, cs in r2)))
+
+    def guess_omit(self):
+        tpsr = self.txt_parser['cn']
+        r = []
+        for i in range(0, tpsr.text.cnt_index - 1, 2):
+            t1 = tpsr.get_text(i)
+            t2 = tpsr.get_text(i+1)
+            if len(t1) > 0 and len(t2) == 0:
+                r.append(i)
+        return r
 
 if __name__ == '__main__':
     from hexdump import hexdump
