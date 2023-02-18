@@ -106,10 +106,11 @@ class c_ff5a_fixer:
                 if cmd_valid:
                     mrg()
                     rc = ctx.pop('ret', None)
-                    if isinstance(rc, list):
-                        r.extend(rc)
-                    else:
-                        r.append(rc)
+                    if not rc is None:
+                        if isinstance(rc, list):
+                            r.extend(rc)
+                        else:
+                            r.append(rc)
                     if ctx.pop('break', False):
                         break
                     else:
@@ -134,11 +135,13 @@ class c_ff5a_fixer:
                 ctx['ret'] = tpsr.enc_ctrl(int(v))
             elif c == 'u':
                 ctx['ret'] = int(v, base=16)
-            elif c == 't':
-                ctx['ret'] = [1,2,3]
+            elif c == 'f':
+                ctx['flag'] = v
+                ctx['break'] = True
             else:
-                return False
+                raise
         except:
+            report('warning', f'cmd[{c}{v}] failed')
             return False
         return True
 
