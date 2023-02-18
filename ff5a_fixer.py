@@ -13,12 +13,14 @@ def report(*args):
 
 class c_ff5a_fixer:
 
-    def __init__(self, paths):
+    def __init__(self, paths, dump_info):
         self.paths = paths
+        self.info_dump = dump_info
 
     def load(self):
         self.load_rom()
         self.load_charset()
+        self.load_patch()
 
     def load_rom(self):
         path = self.paths['rom']
@@ -50,6 +52,25 @@ class c_ff5a_fixer:
                 json.dump((cs, csr), fd, ensure_ascii=False)
         except:
             pass
+
+    def load_patch(self):
+        path = self.paths['patch']
+        try:
+            with open(path, 'r', encoding='utf-8') as fd:
+                self.patch = json.load(fd)
+        except:
+            self.reset_patch()
+
+    def reset_patch(self):
+        path = self.paths['patch']
+        patch = self.dump_with(self.info_dump)
+        try:
+            with open(path, 'w', encoding='utf-8') as fd:
+                json.dump(patch, fd,
+                    ensure_ascii=False,indent=4, sort_keys=False)
+        except:
+            pass
+        self.patch = patch
 
     def chr(self, i):
         for ci, cs in enumerate(self.chst):
@@ -135,9 +156,14 @@ class c_ff5a_fixer:
                 ctx['ret'] = tpsr.enc_ctrl(int(v))
             elif c == 'u':
                 ctx['ret'] = int(v, base=16)
-            elif c == 'f':
-                ctx['flag'] = v
+            elif c == 'f' and v[0] == ':':
+                if not 'flags' in ctx:
+                    ctx['flags'] = set()
+                ctx['flags'].add(v[1:])
                 ctx['break'] = True
+            elif c == '#':
+                # comment
+                pass
             else:
                 raise
         except:
@@ -172,6 +198,63 @@ class c_ff5a_fixer:
         with open(self.paths['rom_out'], 'wb') as fd:
             fd.write(mk.BYTES(0, None))
 
+    def dump_texts(self, blk, tidxs, surplus = 0, skipeven = True):
+        for tidx in tidxs:
+            if surplus > 0:
+                srng = (-(surplus-1)*2-(tidx%2), surplus*2-(tidx%2))
+            else:
+                srng = (0, 1)
+            for i in range(*srng):
+                ti = tidx + i
+                if skipeven and not ti % 2:
+                    continue
+                txt = self.get_text(ti)
+                ptxt = '[#prev]' + (self.get_text(ti-1) if ti > 0 else '')
+                if not txt and ti % 2:
+                    txt = ptxt
+                    is_prev = True
+                else:
+                    is_prev = False
+                if i == 0:
+                    if is_prev:
+                        blk[ti] = {txt: '[#dump]' + txt}
+                    else:
+                        blk[ti] = {txt: ''}
+                else:
+                    if ti in blk:
+                        continue
+                    if skipeven:
+                        blk[ti] = {txt: '[F:refer]' + ptxt}
+                    else:
+                        blk[ti] = {txt: '[F:refer]'}
+
+    def dump_with(self, info):
+        blks = {}
+        for desc, cb in info.items():
+            blk = {}
+            for ti_info in cb(self.psr):
+                self.dump_texts(blk, *ti_info)
+            blks[desc] = blk
+        return blks
+
+    def repack_replace(self, blks):
+        rplc = {}
+        for desc, blk in blks.items():
+            for ti, tr in blk.items():
+                assert(len(tr)) == 1
+                for stxt, dtxt in tr.items():
+                    pass
+                dtxt, ctx = self.parse(dtxt)
+                flgs = ctx['flags']
+                if 'clear' in flgs:
+                    rplc[ti] = ''
+                    continue
+                elif 'refer' in flgs:
+                    continue
+                if dtxt:
+                    rplc[ti] = dtxt
+        return rplc
+
 if __name__ == '__main__':
 
     from pprint import pprint
@@ -181,6 +264,15 @@ if __name__ == '__main__':
         'rom': 'ff5acn.gba',
         'rom_out': 'ff5acn_out.gba',
         'charset': 'charset.json',
+        'patch': 'patch.json',
     }
-    fx = c_ff5a_fixer(FF5A_PATHS)
+    FF5A_DUMP_INFO = {
+        'name table': lambda psr: [
+            (range(450, 472),),
+        ],
+        'omit': lambda psr: [
+            ([i+1 for i in psr.guess_omit()], 3),
+        ],
+    }
+    fx = c_ff5a_fixer(FF5A_PATHS, FF5A_DUMP_INFO)
     fx.load()
