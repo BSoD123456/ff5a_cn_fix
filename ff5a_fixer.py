@@ -52,17 +52,12 @@ class c_ff5a_fixer:
             pass
 
     def chr(self, i):
-        tpsr = self.psr.txt_parser['cn']
-        cc = tpsr.dec_ctrl(i)
-        if cc:
-            return f'[C{cc}]'
         for ci, cs in enumerate(self.chst):
             if i in cs:
                 c = cs[i]
                 if ci > 0:
                     report('warning', f'non-determine char {c}({i:x})')
                 return c
-        return f'[U{i:04x}]'
 
     def ord(self, c):
         for ci, csr in enumerate(self.chst_r):
@@ -72,11 +67,97 @@ class c_ff5a_fixer:
                     report('warning', f'non-determine char {c}({i:x})')
                 return i
 
+    def parse(self, s):
+        r = []
+        ci = [-1]
+        slen = len(s)
+        ctx = {}
+        def gc(la):
+            i = ci[-1] + la
+            if 0 <= i < slen:
+                return s[i]
+            else:
+                return None
+        def stp(v):
+            i = ci[-1]
+            ri = min(slen, i + v)
+            ci[-1] = ri
+            return ri
+        def psh():
+            ci.append(ci[-1])
+        def dsc():
+            return ci.pop()
+        def mrg():
+            ci[-1] = dsc()
+        while stp(1) < slen:
+            c = gc(0)
+            if c == '[':
+                psh()
+                cmd = []
+                cmd_valid = False
+                while stp(1) < slen:
+                    la = gc(0).lower()
+                    if la == '[':
+                        break
+                    elif la == ']':
+                        cmd_valid = self._parse_cmd(cmd, ctx)
+                        break
+                    cmd.append(la)
+                if cmd_valid:
+                    mrg()
+                    rc = ctx.pop('ret', None)
+                    if isinstance(rc, list):
+                        r.extend(rc)
+                    else:
+                        r.append(rc)
+                    if ctx.pop('break', False):
+                        break
+                    else:
+                        continue
+                else:
+                    dsc()
+            rc = self.ord(c)
+            if rc is None:
+                report('warning', f'unknown char {c} at {ci[0]}, ignored')
+            else:
+                r.append(rc)
+        return r, ctx
+
+    def _parse_cmd(self, cmd, ctx):
+        if not cmd:
+            return False
+        [c, *v] = cmd
+        v = ''.join(v)
+        try:
+            if c == 'c':
+                tpsr = self.psr.txt_parser['cn']
+                ctx['ret'] = tpsr.enc_ctrl(int(v))
+            elif c == 'u':
+                ctx['ret'] = int(v, base=16)
+            elif c == 't':
+                ctx['ret'] = [1,2,3]
+            else:
+                return False
+        except:
+            return False
+        return True
+
     def toloc(self, s):
-        return [self.ord(c) for c in s]
+        return self.parse(s)[0]
 
     def tostr(self, s):
-        return ''.join(self.chr(i) for i in s)
+        tpsr = self.psr.txt_parser['cn']
+        r = []
+        for i in s:
+            cc = tpsr.dec_ctrl(i)
+            if cc:
+                c = f'[C{cc}]'
+            else:
+                c = self.chr(i)
+                if c is None:
+                    c = f'[U{i:04x}]'
+            r.append(c)
+        return ''.join(r)
 
     def get_text(self, tidx, name = 'cn'):
         src = self.psr.txt_parser[name].get_text(tidx)
