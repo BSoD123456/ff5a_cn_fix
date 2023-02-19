@@ -57,7 +57,8 @@ class c_ff5a_fixer:
         path = self.paths['patch']
         try:
             with open(path, 'r', encoding='utf-8') as fd:
-                self.patch = json.load(fd)
+                patch = json.load(fd)
+            self.patch = {d: {int(k): v for k, v in b.items()} for d, b in patch.items()}
         except:
             self.reset_patch()
 
@@ -140,6 +141,7 @@ class c_ff5a_fixer:
                     dsc()
             rc = self.ord(c)
             if rc is None:
+                breakpoint()
                 report('warning', f'unknown char {c} at {ci[0]}, ignored')
             else:
                 r.append(rc)
@@ -192,11 +194,8 @@ class c_ff5a_fixer:
         src = self.psr.txt_parser[name].get_text(tidx)
         return self.tostr(src)
 
-    def repack_with(self, rplc):
-        mk = self.psr.repack_txt_with('cn',
-            {i:self.toloc(s) for i, s in rplc.items()})
-        with open(self.paths['rom_out'], 'wb') as fd:
-            fd.write(mk.BYTES(0, None))
+    def find_text(self, src, name = 'cn'):
+        return [ti for ti, ci in self.psr.find_txt_chars(name, fx.toloc(src), False)]
 
     def dump_texts(self, blk, tidxs, surplus = 0, skipeven = True):
         for tidx in tidxs:
@@ -209,7 +208,10 @@ class c_ff5a_fixer:
                 if skipeven and not ti % 2:
                     continue
                 txt = self.get_text(ti)
-                ptxt = '[#prev]' + (self.get_text(ti-1) if ti > 0 else '')
+                ptxt = (self.get_text(ti-1) if ti > 0 else '')
+                if not (txt or ptxt):
+                    continue
+                ptxt = '[#prev]' + ptxt
                 if not txt and ti % 2:
                     txt = ptxt
                     is_prev = True
@@ -230,10 +232,17 @@ class c_ff5a_fixer:
 
     def dump_with(self, info):
         blks = {}
+        wlk = set()
         for desc, cb in info.items():
             blk = {}
-            for ti_info in cb(self.psr):
-                self.dump_texts(blk, *ti_info)
+            for ti_info in cb(self):
+                tidxs = []
+                for ti in ti_info[0]:
+                    if ti in wlk:
+                        continue
+                    wlk.add(ti)
+                    tidxs.append(ti)
+                self.dump_texts(blk, tidxs, *ti_info[1:])
             blks[desc] = blk
         return blks
 
@@ -245,15 +254,25 @@ class c_ff5a_fixer:
                 for stxt, dtxt in tr.items():
                     pass
                 dtxt, ctx = self.parse(dtxt)
-                flgs = ctx['flags']
-                if 'clear' in flgs:
-                    rplc[ti] = ''
-                    continue
-                elif 'refer' in flgs:
-                    continue
+                if 'flags' in ctx:
+                    flgs = ctx['flags']
+                    if 'clear' in flgs:
+                        rplc[ti] = ''
+                        continue
+                    elif 'refer' in flgs:
+                        continue
                 if dtxt:
                     rplc[ti] = dtxt
         return rplc
+
+    def repack_with(self, rplc):
+        mk = self.psr.repack_txt_with('cn', rplc)
+        with open(self.paths['rom_out'], 'wb') as fd:
+            fd.write(mk.BYTES(0, None))
+
+    def repack(self):
+        rplc = self.repack_replace(self.patch)
+        self.repack_with(rplc)
 
 if __name__ == '__main__':
 
@@ -267,11 +286,17 @@ if __name__ == '__main__':
         'patch': 'patch.json',
     }
     FF5A_DUMP_INFO = {
-        'name table': lambda psr: [
+        'wrong': lambda fx: [
+            (fx.find_text('消息速度'), 1, False),
+        ],
+        'name table': lambda fx: [
             (range(450, 472),),
         ],
-        'omit': lambda psr: [
-            ([i+1 for i in psr.guess_omit()], 3),
+        'omit': lambda fx: [
+            ([i+1 for i in fx.psr.guess_omit() if not i+1 in {
+                9109, 9207, 9239, 9243, 9245, 9265,
+                9027, # not sure
+            }], 3),
         ],
     }
     fx = c_ff5a_fixer(FF5A_PATHS, FF5A_DUMP_INFO)
