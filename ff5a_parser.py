@@ -627,13 +627,18 @@ class c_ff5a_parser_text:
         return self.text.repack_with(
             {i: self.enc_text(t) for i, t in rplc.items()})
 
-    def find_chars(self, chars, first = True, ret_txt = False):
+    def find_chars(self, chars, first = True, strict = False, ret_txt = False):
         hd = chars[0]
         slen = len(chars)
         r = []
         for idx in range(self.text.cnt_index):
             txt = self.get_text(idx)
-            for i in range(len(txt) - slen + 1):
+            tlen = len(txt)
+            if strict and not (
+                tlen == slen or
+                (tlen == slen + 1 and txt[-1] == 0)):
+                continue
+            for i in range(tlen - slen + 1):
                 d = txt[i]
                 if d != hd:
                     continue
@@ -828,8 +833,8 @@ class c_ff5a_parser:
         else:
             return blk
 
-    def find_txt_chars(self, name, chars, first = True, ret_txt = False):
-        return self.txt_parser[name].find_chars(chars, first, ret_txt)
+    def find_txt_chars(self, name, chars, first = True, strict = False, ret_txt = False):
+        return self.txt_parser[name].find_chars(chars, first, strict, ret_txt)
 
     def repack_txt_with(self, name, rplc):
         tpsr = self.txt_parser[name]
@@ -968,16 +973,19 @@ class c_ff5a_parser:
         return r1, r2
 
     TXT_FNTCN_JPRNG = (0x99, 0x13b)
+    def is_jp(self, c):
+        r0, r1 = self.TXT_FNTCN_JPRNG
+        return r0 <= c < r1
+    
     def guess_non_trans_text(self):
         tpsr = self.txt_parser['cn']
-        r0, r1 = self.TXT_FNTCN_JPRNG
         r = []
         for i in range(1, tpsr.text.cnt_index, 2):
             t = tpsr.get_text(i)
             if len(t) < 2:
                 continue
             for c in t:
-                if r0 <= c < r1:
+                if self.is_jp(c):
                     r.append(i)
                     break
         return r

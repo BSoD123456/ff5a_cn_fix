@@ -141,8 +141,8 @@ class c_ff5a_fixer:
                     dsc()
             rc = self.ord(c)
             if rc is None:
-                breakpoint()
-                report('warning', f'unknown char {c} at {ci[0]}, ignored')
+                raise RuntimeError(
+                    report('error', f'unknown char {c} at {ci[0]}, ignored'))
             else:
                 r.append(rc)
         return r, ctx
@@ -194,8 +194,18 @@ class c_ff5a_fixer:
         src = self.psr.txt_parser[name].get_text(tidx)
         return self.tostr(src)
 
-    def find_text(self, src, name = 'cn'):
-        return [ti for ti, ci in self.psr.find_txt_chars(name, fx.toloc(src), False)]
+    def find_text(self, src, strict = False, name = 'cn'):
+        return [ti for ti, ci in self.psr.find_txt_chars(name, fx.toloc(src), False, strict)]
+
+    def draw_found_text(self, src, skipeven = True, name = 'cn'):
+        r = self.find_text(src, False, name)
+        rs = set()
+        for i in r:
+            ib = i // 2 * 2
+            if not skipeven:
+                rs.add(ib)
+            rs.add(ib+1)
+        return self.psr.draw_txt_parser(sorted(rs))
 
     def dump_texts(self, blk, tidxs, surplus = 0, skipeven = True):
         for tidx in tidxs:
@@ -221,7 +231,7 @@ class c_ff5a_fixer:
                     if is_prev:
                         blk[ti] = {txt: '[#dump]' + txt}
                     else:
-                        blk[ti] = {txt: ''}
+                        blk[ti] = {txt: self._auto_trans_quoteword(txt)}
                 else:
                     if ti in blk:
                         continue
@@ -229,6 +239,70 @@ class c_ff5a_fixer:
                         blk[ti] = {'[F:refer]' + txt: '[F:refer]' + ptxt}
                     else:
                         blk[ti] = {'[F:refer]' + txt: '[F:refer]'}
+
+    def _get_trans_word(self, word):
+        if not hasattr(self, '_trans_word'):
+            self._trans_word = {}
+        if word in self._trans_word:
+            return self._trans_word[word]
+        wi = self.find_text(word, True)
+        if not wi:
+            self._trans_word[word] = None
+            return None
+        tword = self.get_text(wi[0]+1)
+        if not tword or tword == word:
+            self._trans_word[word] = None
+            return None
+        self._trans_word[word] = tword
+        report('info', f'auto trans {word} -> {tword}')
+        return tword
+
+    def _auto_trans_quoteword(self, txt):
+        sta_rec = 0
+        rs = []
+        transed = False
+        for c in txt:
+            if c == '『':
+                if sta_rec > 0:
+                    rs.extend(rec)
+                sta_rec = 2
+                rec = []
+                has_jp = False
+                rs.append(c)
+            elif c == '「':
+                if sta_rec > 0:
+                    rs.extend(rec)
+                sta_rec = 1
+                rec = []
+                has_jp = False
+                rs.append(c)
+            elif ((c == '』' and sta_rec == 2)
+                or (c == '」' and sta_rec == 1)):
+                sta_rec = 0
+                if not has_jp:
+                    rs.extend(rec)
+                    rs.append(c)
+                    continue
+                word = ''.join(rec)
+                tword = self._get_trans_word(word)
+                if tword:
+                    rs.append(tword)
+                    transed = True
+                else:
+                    rs.extend(rec)
+                rs.append(c)
+            elif sta_rec > 0:
+                rec.append(c)
+                oc = self.ord(c)
+                if oc and self.psr.is_jp(oc):
+                    has_jp = True
+            else:
+                rs.append(c)
+        if transed:
+            rs.insert(0, '[#auto]')
+            return ''.join(rs)
+        else:
+            return ''
 
     def dump_with(self, info):
         blks = {}
