@@ -381,3 +381,5 @@ if __name__ == '__main__':
     }
     fx = c_ff5a_fixer(FF5A_PATHS, FF5A_DUMP_INFO)
     fx.load()
+    # repack
+    fx.repack()
