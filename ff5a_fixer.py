@@ -226,9 +226,9 @@ class c_ff5a_fixer:
                     if ti in blk:
                         continue
                     if skipeven:
-                        blk[ti] = {txt: '[F:refer]' + ptxt}
+                        blk[ti] = {'[F:refer]' + txt: '[F:refer]' + ptxt}
                     else:
-                        blk[ti] = {txt: '[F:refer]'}
+                        blk[ti] = {'[F:refer]' + txt: '[F:refer]'}
 
     def dump_with(self, info):
         blks = {}
@@ -297,6 +297,12 @@ if __name__ == '__main__':
                 9109, 9207, 9239, 9243, 9245, 9265,
                 9027, # not sure
             }], 3),
+        ],
+        'ctrl symbols': lambda fx: [
+            (fx.psr.guess_ctrl_fault(), 2, False),
+        ],
+        'non-trans': lambda fx: [
+            (fx.psr.guess_non_trans_text(), 3),
         ],
     }
     fx = c_ff5a_fixer(FF5A_PATHS, FF5A_DUMP_INFO)
