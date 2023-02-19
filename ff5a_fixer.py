@@ -251,28 +251,28 @@ class c_ff5a_fixer:
         for desc, blk in blks.items():
             for ti, tr in blk.items():
                 assert(len(tr)) == 1
-                for stxt, dtxt in tr.items():
+                for stxt, ctxt in tr.items():
                     pass
-                dtxt, ctx = self.parse(dtxt)
+                dtxt, ctx = self.parse(ctxt)
                 if 'flags' in ctx:
                     flgs = ctx['flags']
                     if 'clear' in flgs:
                         rplc[ti] = ''
+                        report('info', f'clear text({ti})\n{stxt}')
                         continue
                     elif 'refer' in flgs:
                         continue
                 if dtxt:
+                    report('info', f'replace text({ti})\n{stxt} -> {self.tostr(dtxt)}')
                     rplc[ti] = dtxt
+        report('info', f'replace {len(rplc)} texts')
         return rplc
-
-    def repack_with(self, rplc):
-        mk = self.psr.repack_txt_with('cn', rplc)
-        with open(self.paths['rom_out'], 'wb') as fd:
-            fd.write(mk.BYTES(0, None))
 
     def repack(self):
         rplc = self.repack_replace(self.patch)
-        self.repack_with(rplc)
+        mk = self.psr.repack_txt_with('cn', rplc)
+        with open(self.paths['rom_out'], 'wb') as fd:
+            fd.write(mk.BYTES(0, None))
 
 if __name__ == '__main__':
 
