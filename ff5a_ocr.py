@@ -525,6 +525,7 @@ class c_ff5a_ocr_parser:
             708: '喷',
             701: '啵',
             2126: '饮',
+            2026: '铸',
             # unused, only for charset
             **self._chartab(0x99, [
                 (0xa4a1, 0xa4ee), 0xa4ef, 0xa4f2, 0xa4f3,

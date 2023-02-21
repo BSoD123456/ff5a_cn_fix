@@ -362,6 +362,7 @@ if __name__ == '__main__':
     FF5A_DUMP_INFO = {
         'wrong': lambda fx: [
             (fx.find_text('消息速度'), 1, False),
+            ([11963], 1, False),
         ],
         'name table': lambda fx: [
             (range(450, 472),),
